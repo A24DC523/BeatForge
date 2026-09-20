@@ -514,6 +514,30 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
   }, [volume]);
 
   useEffect(() => {
+    if (score.combo <= 0) return;
+
+    setComboPulseKey((value) => value + 1);
+    const isMilestone =
+      score.combo === 10 ||
+      score.combo === 25 ||
+      score.combo === 50 ||
+      (score.combo >= 100 && score.combo % 50 === 0);
+
+    if (!isMilestone) return;
+
+    setComboMilestone(score.combo);
+    if (comboTimerRef.current !== null) window.clearTimeout(comboTimerRef.current);
+    comboTimerRef.current = window.setTimeout(() => {
+      setComboMilestone(null);
+      comboTimerRef.current = null;
+    }, 900);
+  }, [score.combo]);
+
+  useEffect(() => () => {
+    if (comboTimerRef.current !== null) window.clearTimeout(comboTimerRef.current);
+  }, []);
+
+  useEffect(() => {
     if (
       status === 'finished' &&
       score.judged >= score.totalObjects &&
@@ -642,6 +666,12 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
   }, [applyJudge, beatmap.objects]);
 
   const accuracyText = useMemo(() => score.accuracy.toFixed(2), [score.accuracy]);
+  const comboTier =
+    score.combo >= 100 ? 'max' :
+    score.combo >= 50 ? 'hot' :
+    score.combo >= 25 ? 'flow' :
+    score.combo >= 10 ? 'warm' :
+    'base';
   const timeText = useMemo(() => {
     const seconds = Math.max(0, Math.round((1 - progress) * beatmap.duration));
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -661,7 +691,7 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
 
       <div className="game-hud game-hud-right">
         <div className="hud-score"><strong>{score.score.toLocaleString()}</strong><span>{accuracyText}%</span></div>
-        <div className="hud-combo">{score.combo}<span>x</span></div>
+        <div key={comboPulseKey} className={`hud-combo combo-tier-${comboTier}`}>{score.combo}<span>x</span></div>
         <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'} aria-label="暫停或繼續">
           {status === 'paused' ? <Play size={20} /> : <Pause size={20} />}
         </button>
@@ -678,7 +708,17 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
 
       <div className="game-progress" aria-hidden="true"><span style={{ width: `${progress * 100}%` }} /></div>
       <div className="game-time">{timeText}</div>
-      {currentJudge && <div className={`judge-flash judge-${currentJudge.toLowerCase()}`}>{currentJudge}</div>}
+      {score.combo >= 10 && (
+        <div key={`edge-${comboPulseKey}`} className={`combo-edge-pulse combo-edge-${comboTier}`} aria-hidden="true" />
+      )}
+      {comboMilestone !== null && (
+        <div key={`milestone-${comboMilestone}`} className={`combo-milestone combo-tier-${comboTier}`}>
+          <span>{comboMilestone >= 100 ? 'FEVER' : comboMilestone >= 50 ? 'ON FIRE' : 'COMBO'}</span>
+          <strong>{comboMilestone}</strong>
+          <em>COMBO</em>
+        </div>
+      )}
+      {currentJudge && <div key={judgePulseKey} className={`judge-flash judge-${currentJudge.toLowerCase()}`}>{currentJudge}</div>}
 
       {status === 'ready' && (
         <div className="game-overlay">
