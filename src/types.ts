@@ -9,11 +9,19 @@ export interface SpectralBands {
   high: number[];
 }
 
+export interface TempoSegment {
+  start: number;
+  end: number;
+  bpm: number;
+  beatInterval: number;
+}
+
 export interface AudioAnalysis {
   duration: number;
   bpm: number;
   beatInterval: number;
   beatOffset: number;
+  tempoMap?: TempoSegment[];
   beats: number[];
   energy: number[];
   bands?: SpectralBands;
