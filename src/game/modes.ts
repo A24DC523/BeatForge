@@ -46,6 +46,22 @@ export const GAME_MODES: GameModeDefinition[] = [
     controlsMobile: '任意位置點擊',
     lanes: 1,
   },
+  {
+    id: 'drum',
+    label: 'DRUM',
+    shortLabel: 'Don / Ka',
+    description: '紅藍鼓點模式，分辨 Don / Ka 並跟住節奏敲擊。',
+    controlsDesktop: 'F / J = Don · D / K = Ka',
+    controlsMobile: '點擊紅 / 藍鼓面',
+  },
+  {
+    id: 'catch',
+    label: 'CATCH',
+    shortLabel: 'Move & Catch',
+    description: '移動接手追蹤音符位置，在判定線接住節拍。',
+    controlsDesktop: '← / → 或 A / D',
+    controlsMobile: '左右拖曳接手',
+  },
 ];
 
 export function gameModeById(id: GameModeId) {
