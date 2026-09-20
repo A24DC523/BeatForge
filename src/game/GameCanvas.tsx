@@ -1,12 +1,14 @@
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Beatmap, HitObject, Judge, ScoreState } from '../types';
+import { HitSoundEngine, type HitSoundKind } from './hitSound';
 
 interface Props {
   beatmap: Beatmap;
   audioUrl: string;
   offsetMs: number;
   volume: number;
+  hitSoundVolume: number;
   onExit: () => void;
   onFinish?: (result: ScoreState) => void;
 }
@@ -75,7 +77,15 @@ function resultRank(accuracy: number, misses: number) {
   return 'D';
 }
 
-export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFinish }: Props) {
+export function GameCanvas({
+  beatmap,
+  audioUrl,
+  offsetMs,
+  volume,
+  hitSoundVolume,
+  onExit,
+  onFinish,
+}: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -90,6 +100,8 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
   const hitBurstsRef = useRef<HitBurst[]>([]);
   const comboTimerRef = useRef<number | null>(null);
   const resultReportedRef = useRef(false);
+  const scoreRef = useRef<ScoreState>({ ...EMPTY_SCORE, totalObjects: beatmap.objects.length });
+  const hitSoundRef = useRef<HitSoundEngine | null>(null);
   const [status, setStatus] = useState<GameStatus>('ready');
   const [score, setScore] = useState<ScoreState>(() => ({ ...EMPTY_SCORE, totalObjects: beatmap.objects.length }));
   const [progress, setProgress] = useState(0);
@@ -136,31 +148,40 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
     }
   }, [isTouch]);
 
-  const applyJudge = useCallback((judge: Judge, feedbackPoint?: { x: number; y: number }) => {
-    setScore((previous) => {
-      const next = { ...previous };
-      next.judged += 1;
+  const applyJudge = useCallback((
+    judge: Judge,
+    feedbackPoint?: { x: number; y: number },
+    soundKind?: HitSoundKind,
+  ) => {
+    const previous = scoreRef.current;
+    const next = { ...previous };
+    next.judged += 1;
 
-      if (judge === 'miss') {
-        next.miss += 1;
-        next.combo = 0;
-      } else {
-        next[judge] += 1;
-        next.combo += 1;
-        next.maxCombo = Math.max(next.maxCombo, next.combo);
-        const multiplier = 1 + Math.min(next.combo, 100) / 50;
-        next.score += Math.round(scoreValue(judge) * multiplier);
-      }
+    if (judge === 'miss') {
+      next.miss += 1;
+      next.combo = 0;
+    } else {
+      next[judge] += 1;
+      next.combo += 1;
+      next.maxCombo = Math.max(next.maxCombo, next.combo);
+      const multiplier = 1 + Math.min(next.combo, 100) / 50;
+      next.score += Math.round(scoreValue(judge) * multiplier);
+    }
 
-      const weighted =
-        next.perfect * judgeWeight('perfect') +
-        next.great * judgeWeight('great') +
-        next.good * judgeWeight('good');
-      next.accuracy = next.judged > 0 ? (weighted / next.judged) * 100 : 100;
-      return next;
-    });
+    const weighted =
+      next.perfect * judgeWeight('perfect') +
+      next.great * judgeWeight('great') +
+      next.good * judgeWeight('good');
+    next.accuracy = next.judged > 0 ? (weighted / next.judged) * 100 : 100;
 
-    if (judge !== 'miss' && feedbackPoint) triggerHitFeedback(judge, feedbackPoint);
+    scoreRef.current = next;
+    setScore(next);
+
+    if (judge !== 'miss') {
+      if (feedbackPoint) triggerHitFeedback(judge, feedbackPoint);
+      hitSoundRef.current?.play(soundKind ?? judge, next.combo);
+    }
+
     lastJudgeRef.current = { text: judge.toUpperCase(), at: performance.now() };
     setJudgePulseKey((value) => value + 1);
     setCurrentJudge(judge.toUpperCase());
@@ -174,7 +195,7 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
 
       if (!judgedRef.current.has(object.id) && !engagedRef.current.has(object.id)) {
         judgedRef.current.add(object.id);
-        applyJudge('miss');
+        applyJudge('miss', { x: object.x, y: object.y });
       }
       missCursorRef.current += 1;
     }
@@ -190,7 +211,11 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
       const feedbackPoint = active.object.type === 'slide'
         ? { x: active.object.endX ?? active.object.x, y: active.object.endY ?? active.object.y }
         : { x: active.object.x, y: active.object.y };
-      applyJudge(active.broken ? 'miss' : active.judge, feedbackPoint);
+      applyJudge(
+        active.broken ? 'miss' : active.judge,
+        feedbackPoint,
+        active.object.type === 'slide' ? 'slide-end' : 'hold-end',
+      );
     }
   }, [applyJudge]);
 
@@ -252,6 +277,7 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
     } else {
       engagedRef.current.set(best.id, { object: best, judge, broken: false });
       triggerHitFeedback(judge, { x: best.x, y: best.y });
+      hitSoundRef.current?.play('hold-start', scoreRef.current.combo);
       lastJudgeRef.current = { text: 'HOLD', at: performance.now() };
       setJudgePulseKey((value) => value + 1);
       setCurrentJudge('HOLD');
@@ -514,6 +540,20 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
   }, [volume]);
 
   useEffect(() => {
+    const engine = new HitSoundEngine(hitSoundVolume);
+    hitSoundRef.current = engine;
+
+    return () => {
+      if (hitSoundRef.current === engine) hitSoundRef.current = null;
+      void engine.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    hitSoundRef.current?.setVolume(hitSoundVolume);
+  }, [hitSoundVolume]);
+
+  useEffect(() => {
     if (score.combo <= 0) return;
 
     setComboPulseKey((value) => value + 1);
@@ -623,13 +663,16 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
     const audio = audioRef.current;
     if (!audio) return;
     resetRefs();
-    setScore({ ...EMPTY_SCORE, totalObjects: beatmap.objects.length });
+    const initialScore = { ...EMPTY_SCORE, totalObjects: beatmap.objects.length };
+    scoreRef.current = initialScore;
+    setScore(initialScore);
     setProgress(0);
     setCurrentJudge('');
     audio.currentTime = 0;
-    setStatus('playing');
     rootRef.current?.focus();
     try {
+      await hitSoundRef.current?.prime();
+      setStatus('playing');
       await audio.play();
     } catch {
       setStatus('ready');
@@ -659,7 +702,14 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
     for (const [id, active] of engagedRef.current.entries()) {
       engagedRef.current.delete(id);
       judgedRef.current.add(id);
-      applyJudge(active.broken ? 'miss' : active.judge);
+      const feedbackPoint = active.object.type === 'slide'
+        ? { x: active.object.endX ?? active.object.x, y: active.object.endY ?? active.object.y }
+        : { x: active.object.x, y: active.object.y };
+      applyJudge(
+        active.broken ? 'miss' : active.judge,
+        feedbackPoint,
+        active.object.type === 'slide' ? 'slide-end' : 'hold-end',
+      );
     }
     setProgress(1);
     setStatus('finished');
