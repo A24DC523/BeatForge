@@ -547,8 +547,8 @@ export default function App() {
                       <small>{preset.description}</small>
                     </span>
                     <span className="diff-metrics">
-                      <em>★ {map.starRating.toFixed(1)}</em>
-                      <small>{map.objects.length} objects</small>
+                      <em>★ {adaptBeatmapForMode(map, selectedMode).starRating.toFixed(1)}</em>
+                      <small>{adaptBeatmapForMode(map, selectedMode).objects.length} objects</small>
                     </span>
                     <span className="diff-radio">{active && <CheckCircle2 size={20} />}</span>
                   </button>
