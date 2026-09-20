@@ -37,6 +37,60 @@ describe('BeatForge audio analysis', () => {
     expect(result.bands?.high.length).toBe(result.energy.length);
   });
 
+  it('detects a major tempo change and builds a segmented tempo map', async () => {
+    const sampleRate = 22050;
+    const duration = 32;
+    const sampleCount = sampleRate * duration;
+    const channel = new Float32Array(sampleCount);
+
+    const addClicks = (start: number, end: number, bpm: number) => {
+      const interval = 60 / bpm;
+      for (let time = start + 0.5; time < end; time += interval) {
+        const origin = Math.floor(time * sampleRate);
+        const length = Math.floor(sampleRate * 0.018);
+        for (let i = 0; i < length && origin + i < channel.length; i += 1) {
+          const envelope = 1 - i / length;
+          channel[origin + i] += Math.sin((Math.PI * 2 * 900 * i) / sampleRate) * envelope * 0.9;
+        }
+      }
+    };
+
+    addClicks(0, 16, 120);
+    addClicks(16, 32, 160);
+
+    const fakeBuffer = {
+      numberOfChannels: 1,
+      length: sampleCount,
+      sampleRate,
+      duration,
+      getChannelData: (index: number) => {
+        if (index !== 0) throw new Error('Unexpected channel');
+        return channel;
+      },
+    } as unknown as AudioBuffer;
+
+    const result = await analyzeAudioBuffer(fakeBuffer);
+    const tempoMap = result.tempoMap ?? [];
+
+    expect(tempoMap.length).toBeGreaterThanOrEqual(2);
+    expect(tempoMap[0].bpm).toBeGreaterThanOrEqual(115);
+    expect(tempoMap[0].bpm).toBeLessThanOrEqual(125);
+    expect(tempoMap[tempoMap.length - 1].bpm).toBeGreaterThanOrEqual(150);
+    expect(tempoMap[tempoMap.length - 1].bpm).toBeLessThanOrEqual(170);
+
+    const firstHalf = result.beats.filter((beat) => beat < 15);
+    const secondHalf = result.beats.filter((beat) => beat > 17);
+    const averageGap = (beats: number[]) => {
+      const gaps = beats.slice(1).map((beat, index) => beat - beats[index]);
+      return gaps.reduce((sum, gap) => sum + gap, 0) / Math.max(gaps.length, 1);
+    };
+
+    expect(averageGap(firstHalf)).toBeGreaterThan(0.45);
+    expect(averageGap(firstHalf)).toBeLessThan(0.55);
+    expect(averageGap(secondHalf)).toBeGreaterThan(0.33);
+    expect(averageGap(secondHalf)).toBeLessThan(0.42);
+  });
+
   it('separates low-frequency and high-frequency tones into different bands', async () => {
     const makeTone = (frequency: number) => {
       const sampleRate = 44100;
