@@ -41,6 +41,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const cacheableDestinations = new Set([
+    'script',
+    'style',
+    'image',
+    'font',
+    'manifest',
+    'worker',
+  ]);
+
+  if (!cacheableDestinations.has(request.destination)) return;
+
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
