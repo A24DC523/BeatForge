@@ -23,17 +23,26 @@ describe('BeatForge beatmap validator', () => {
   });
 
   it('repairs sustain overlap before the next note', () => {
-    const objects: HitObject[] = [
+    const repairable: HitObject[] = [
       { id: 0, time: 500, type: 'hold', x: 0.4, y: 0.4, duration: 1200, weight: 1 },
       { id: 1, time: 1100, type: 'tap', x: 0.55, y: 0.55, weight: 1 },
     ];
 
-    const result = validateAndRepairObjects(objects, 4000, 'normal');
-    const first = result.objects[0];
+    const repaired = validateAndRepairObjects(repairable, 4000, 'normal');
+    const shortened = repaired.objects[0];
 
-    expect(first.type).toBe('tap');
-    expect(first.duration).toBeUndefined();
-    expect(result.report.warnings).toContain('sustain-overlap');
+    expect(shortened.type).toBe('hold');
+    expect(shortened.duration).toBe(480);
+    expect(repaired.report.warnings).toContain('sustain-overlap');
+
+    const impossible: HitObject[] = [
+      { id: 0, time: 500, type: 'hold', x: 0.4, y: 0.4, duration: 1200, weight: 1 },
+      { id: 1, time: 950, type: 'tap', x: 0.55, y: 0.55, weight: 1 },
+    ];
+
+    const downgraded = validateAndRepairObjects(impossible, 4000, 'normal').objects[0];
+    expect(downgraded.type).toBe('tap');
+    expect(downgraded.duration).toBeUndefined();
   });
 
   it('removes duplicate timestamps and invalid objects', () => {
