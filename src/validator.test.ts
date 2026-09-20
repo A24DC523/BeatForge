@@ -22,6 +22,20 @@ describe('BeatForge beatmap validator', () => {
     expect(result.objects[1].endY).toBeGreaterThanOrEqual(0.14);
   });
 
+  it('repairs sustain overlap before the next note', () => {
+    const objects: HitObject[] = [
+      { id: 0, time: 500, type: 'hold', x: 0.4, y: 0.4, duration: 1200, weight: 1 },
+      { id: 1, time: 1100, type: 'tap', x: 0.55, y: 0.55, weight: 1 },
+    ];
+
+    const result = validateAndRepairObjects(objects, 4000, 'normal');
+    const first = result.objects[0];
+
+    expect(first.type).toBe('tap');
+    expect(first.duration).toBeUndefined();
+    expect(result.report.warnings).toContain('sustain-overlap');
+  });
+
   it('removes duplicate timestamps and invalid objects', () => {
     const objects: HitObject[] = [
       { id: 0, time: -5, type: 'tap', x: 0.5, y: 0.5, weight: 1 },
