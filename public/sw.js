@@ -1,4 +1,4 @@
-const CACHE = 'beatforge-shell-v0.2';
+const CACHE = 'beatforge-shell-v0.3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
