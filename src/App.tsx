@@ -25,7 +25,9 @@ import { decodeAudioFile, fetchAudioUrl } from './audio';
 import { DIFFICULTIES, generateAllBeatmaps } from './beatmap';
 import { createDemoFile } from './demo';
 import { GameCanvas } from './game/GameCanvas';
-import type { AudioAnalysis, Beatmap, DifficultyId, ScoreState, SongSource } from './types';
+import { LaneGameCanvas } from './game/LaneGameCanvas';
+import { GAME_MODES, gameModeById } from './game/modes';
+import type { AudioAnalysis, Beatmap, DifficultyId, GameModeId, ScoreState, SongSource } from './types';
 
 type Stage = 'home' | 'analyzing' | 'select' | 'game';
 
@@ -51,13 +53,15 @@ function loadBestScores(): Record<string, BestRecord> {
   }
 }
 
-function scoreKey(song: SongSource, map: Beatmap) {
-  return [
+function scoreKey(song: SongSource, map: Beatmap, mode: GameModeId) {
+  const parts = [
     song.title.toLowerCase(),
     Math.round(map.bpm * 10),
     Math.round(map.duration * 10),
     map.difficulty,
-  ].join('|');
+  ];
+  if (mode !== 'forge') parts.push(mode);
+  return parts.join('|');
 }
 
 function formatDuration(seconds: number) {
@@ -102,6 +106,7 @@ export default function App() {
   const [beatmaps, setBeatmaps] = useState<Record<DifficultyId, Beatmap> | null>(null);
   const [song, setSong] = useState<SongSource | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyId>('normal');
+  const [selectedMode, setSelectedMode] = useState<GameModeId>('forge');
   const [error, setError] = useState('');
   const [urlInput, setUrlInput] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
@@ -193,6 +198,7 @@ export default function App() {
       setBeatmaps(maps);
       setSong({ file, url, title, artist });
       setSelectedDifficulty('normal');
+      setSelectedMode('forge');
       setAnalysisStep('譜面完成');
       await new Promise<void>((resolve) => setTimeout(resolve, 180));
       setStage('select');
@@ -241,14 +247,15 @@ export default function App() {
   };
 
   const selectedMap = beatmaps?.[selectedDifficulty] ?? null;
+  const selectedModeDefinition = useMemo(() => gameModeById(selectedMode), [selectedMode]);
   const selectedBest = useMemo(() => {
     if (!song || !selectedMap) return null;
-    return bestScores[scoreKey(song, selectedMap)] ?? null;
-  }, [bestScores, selectedMap, song]);
+    return bestScores[scoreKey(song, selectedMap, selectedMode)] ?? null;
+  }, [bestScores, selectedMap, selectedMode, song]);
 
   const saveBestResult = (result: ScoreState) => {
     if (!song || !selectedMap) return;
-    const key = scoreKey(song, selectedMap);
+    const key = scoreKey(song, selectedMap, selectedMode);
     const previous = bestScores[key];
     const improved =
       !previous ||
@@ -282,10 +289,25 @@ export default function App() {
   }, [beatmaps, selectedDifficulty]);
 
   if (stage === 'game' && song && selectedMap) {
+    if (selectedMode === 'forge') {
+      return (
+        <GameCanvas
+          beatmap={selectedMap}
+          audioUrl={song.url}
+          offsetMs={offsetMs}
+          volume={volume}
+          hitSoundVolume={hitSoundVolume}
+          onExit={() => setStage('select')}
+          onFinish={saveBestResult}
+        />
+      );
+    }
+
     return (
-      <GameCanvas
+      <LaneGameCanvas
         beatmap={selectedMap}
         audioUrl={song.url}
+        mode={selectedMode}
         offsetMs={offsetMs}
         volume={volume}
         hitSoundVolume={hitSoundVolume}
@@ -464,12 +486,45 @@ export default function App() {
             </div>
           </section>
 
+          <section className="mode-section">
+            <div className="section-heading compact">
+              <div><span className="eyebrow">SELECT MODE</span><h2>選擇遊玩方式</h2></div>
+              <div className="control-legend">
+                <span><Gamepad2 size={15} />4 種玩法共用同一首歌</span>
+              </div>
+            </div>
+
+            <div className="mode-grid">
+              {GAME_MODES.map((mode) => {
+                const active = selectedMode === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    className={`mode-card ${active ? 'active' : ''}`}
+                    onClick={() => setSelectedMode(mode.id)}
+                    aria-pressed={active}
+                  >
+                    <span className="mode-card-kicker">{mode.shortLabel}</span>
+                    <strong>{mode.label}</strong>
+                    <p>{mode.description}</p>
+                    <div className="mode-controls">
+                      <span>{mode.controlsDesktop}</span>
+                      <span>{mode.controlsMobile}</span>
+                    </div>
+                    {active && <CheckCircle2 className="mode-check" size={20} />}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
           <section className="difficulty-section">
             <div className="section-heading compact">
               <div><span className="eyebrow">SELECT DIFFICULTY</span><h2>選擇你的挑戰</h2></div>
               <div className="control-legend">
-                <span><MousePointer2 size={15} />電腦：滑鼠 + Z/X</span>
-                <span><Smartphone size={15} />手機：直接觸控</span>
+                <span><MousePointer2 size={15} />電腦：{selectedModeDefinition.controlsDesktop}</span>
+                <span><Smartphone size={15} />手機：{selectedModeDefinition.controlsMobile}</span>
               </div>
             </div>
 
@@ -503,7 +558,7 @@ export default function App() {
             <div className="play-panel">
               <div>
                 <span className="eyebrow">CURRENT MAP</span>
-                <strong>{selectedMap.difficultyLabel} · ★ {selectedMap.starRating.toFixed(1)}</strong>
+                <strong>{selectedModeDefinition.label} · {selectedMap.difficultyLabel} · ★ {selectedMap.starRating.toFixed(1)}</strong>
                 <p>
                   {selectedMap.objects.length} 個物件 · Approach {selectedMap.approachMs} ms · Hit Window ±{selectedMap.hitWindowMs} ms
                   {' · '}
