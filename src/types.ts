@@ -24,6 +24,8 @@ export interface HitObject {
   endX?: number;
   endY?: number;
   weight: number;
+  lane?: number;
+  drumKind?: 'don' | 'ka';
 }
 
 export interface BeatmapValidation {
