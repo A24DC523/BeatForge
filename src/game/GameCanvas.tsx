@@ -383,6 +383,11 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit }: Prop
   }, [volume]);
 
   useEffect(() => {
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    setIsTouch(navigator.maxTouchPoints > 0 || coarsePointer);
+  }, []);
+
+  useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
 
