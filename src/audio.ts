@@ -117,6 +117,16 @@ function onsetEnvelope(energy: number[]) {
   return normalize(onset);
 }
 
+function sampleEnvelope(values: number[], index: number) {
+  if (index <= 0) return values[0] ?? 0;
+  if (index >= values.length - 1) return values[values.length - 1] ?? 0;
+  const left = Math.floor(index);
+  const fraction = index - left;
+  const a = values[left] ?? 0;
+  const b = values[left + 1] ?? a;
+  return a + (b - a) * fraction;
+}
+
 function estimateBpmRange(
   onset: number[],
   framesPerSecond: number,
@@ -131,20 +141,21 @@ function estimateBpmRange(
   const end = Math.min(onset.length, Math.ceil(endFrame));
 
   for (let bpm = MIN_BPM; bpm <= MAX_BPM; bpm += 0.5) {
-    const lag = Math.max(1, Math.round((framesPerSecond * 60) / bpm));
+    const lag = Math.max(1, (framesPerSecond * 60) / bpm);
     let score = 0;
+    const first = Math.max(start + Math.ceil(lag), Math.ceil(lag));
 
-    for (let i = Math.max(start + lag, lag); i < end; i += 1) {
+    for (let i = first; i < end; i += 1) {
       const previous = i - lag;
       if (previous < start) continue;
-      score += onset[i] * onset[previous];
+      score += (onset[i] ?? 0) * sampleEnvelope(onset, previous);
     }
 
     const harmonicLag = lag * 2;
     if (start + harmonicLag < end) {
       let harmonicScore = 0;
-      for (let i = start + harmonicLag; i < end; i += 1) {
-        harmonicScore += onset[i] * onset[i - harmonicLag];
+      for (let i = start + Math.ceil(harmonicLag); i < end; i += 1) {
+        harmonicScore += (onset[i] ?? 0) * sampleEnvelope(onset, i - harmonicLag);
       }
       score += harmonicScore * 0.22;
     }
