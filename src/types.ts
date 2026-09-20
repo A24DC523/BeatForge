@@ -3,6 +3,12 @@ export type GameModeId = 'forge' | 'lanes4' | 'split2' | 'pulse1' | 'drum' | 'ca
 export type HitObjectType = 'tap' | 'hold' | 'slide';
 export type Judge = 'perfect' | 'great' | 'good' | 'miss';
 
+export interface SpectralBands {
+  low: number[];
+  mid: number[];
+  high: number[];
+}
+
 export interface AudioAnalysis {
   duration: number;
   bpm: number;
@@ -10,6 +16,7 @@ export interface AudioAnalysis {
   beatOffset: number;
   beats: number[];
   energy: number[];
+  bands?: SpectralBands;
   peaks: number[];
   sampleRate: number;
 }
@@ -24,6 +31,9 @@ export interface HitObject {
   endX?: number;
   endY?: number;
   weight: number;
+  bandLow?: number;
+  bandMid?: number;
+  bandHigh?: number;
   lane?: number;
   drumKind?: 'don' | 'ka';
 }
