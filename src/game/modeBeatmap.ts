@@ -159,12 +159,17 @@ function adaptDrum(objects: HitObject[]) {
 
   return objects.map((source, index) => {
     const object = cloneObject(source);
-    const accented = object.weight >= 1.03;
+    const low = object.bandLow ?? 0.5;
+    const mid = object.bandMid ?? 0.5;
+    const high = object.bandHigh ?? 0.5;
+    const lowDominant = low > high * 1.12 && low >= mid * 0.82;
+    const highDominant = high > low * 1.1 && high >= mid * 0.82;
+    const accented = object.weight >= 1.03 || low > 0.68;
     let kind: 'don' | 'ka';
 
-    if (accented) {
+    if (lowDominant || (accented && !highDominant)) {
       kind = 'don';
-    } else if (source.type === 'slide') {
+    } else if (highDominant || source.type === 'slide') {
       kind = 'ka';
     } else {
       const phrase = Math.floor(index / 8);
@@ -208,9 +213,10 @@ function adaptCatch(objects: HitObject[], difficulty: DifficultyId) {
 
     if (index % 6 === 0) direction *= -1;
 
+    const spectralMotion = clamp((source.bandHigh ?? 0.5) - (source.bandLow ?? 0.5), -0.45, 0.45);
     const phraseTarget =
       0.5 +
-      direction * (0.18 + ((index * 37) % 11) / 100) +
+      direction * (0.18 + ((index * 37) % 11) / 100 + spectralMotion * 0.08) +
       (source.x - 0.5) * 0.3;
     const desired = clamp(phraseTarget, 0.1, 0.9);
     const maxTravel = Math.max(0.055, speed * deltaSeconds * 0.78);
