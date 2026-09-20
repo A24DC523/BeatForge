@@ -51,6 +51,7 @@ function baseScore(judge: Judge) {
 }
 
 function drumKind(object: HitObject): DrumKind {
+  if (object.drumKind) return object.drumKind;
   if (object.type === 'slide') return 'ka';
   if (object.type === 'hold') return object.id % 2 === 0 ? 'don' : 'ka';
   return object.id % 5 === 1 || object.id % 5 === 4 ? 'ka' : 'don';
