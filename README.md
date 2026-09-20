@@ -6,13 +6,13 @@
 
 BeatForge is a browser-first rhythm game that analyzes a user's own audio and automatically turns it into playable rhythm charts.
 
-The project is currently in the **v0.3.1 series** and is playable on desktop and mobile through GitHub Pages. v0.3 expands BeatForge into a multi-mode rhythm platform and introduces a phrase-aware beatmap generator.
+The project is currently in the **v0.4.0 series** and is playable on desktop and mobile through GitHub Pages. v0.3 expands BeatForge into a multi-mode rhythm platform and introduces a phrase-aware beatmap generator.
 
 ## Highlights
 
 - Upload your own MP3, WAV, M4A, AAC, OGG, or FLAC
 - Direct-audio URL import when the source permits browser CORS
-- Browser-side BPM, beat, onset, energy, and Low / Mid / High spectral-band analysis
+- Browser-side global BPM, local tempo-map, beat, onset, energy, and Low / Mid / High spectral-band analysis
 - Phrase-aware Easy / Normal / Hard / Expert beatmap generation
 - Six gameplay modes: Forge, 4K Lanes, 2K Split, 1K Pulse, Drum, and Catch
 - Tap, Hold, and Slide objects
@@ -122,8 +122,9 @@ BeatForge analyzes the decoded song in-browser and builds timing data from:
 
 - energy envelope
 - onset envelope
-- BPM estimation
-- beat-phase estimation
+- global BPM estimation
+- local tempo-segment estimation for major BPM changes
+- beat-phase estimation per tempo segment
 - peak detection
 - local phrase energy across multi-beat windows
 - Low / Mid / High frequency-band envelopes
@@ -131,6 +132,7 @@ BeatForge analyzes the decoded song in-browser and builds timing data from:
 
 The v0.3 generator does more than randomly thin a master timing list. It now applies:
 
+- **tempo-aware beat grid** so major section BPM changes rebuild local beat spacing instead of forcing one whole-song interval;
 - **strong / weak beat weighting** so downbeats and backbeats are more likely to define the chart skeleton;
 - **spectral-aware timing weight** so low-frequency impact strengthens main beats while mid/high transients can reinforce subdivisions and peak events;
 - **phrase-aware density** so energetic sections naturally become busier while quieter sections leave more breathing room;
@@ -139,6 +141,8 @@ The v0.3 generator does more than randomly thin a master timing list. It now app
 - **pattern continuity** so pointer-mode positions form short deterministic motion phrases instead of unrelated jumps;
 - **anti-repetition rules** that reduce immediate 180-degree reversals on easier charts;
 - **sustain pacing** that keeps Hold / Slide objects from stacking back-to-back;
+- **tempo-aware sustain length** so Hold / Slide duration follows the local BPM instead of the song-wide BPM;
+- **sustain reservation** so following notes are not generated inside an active Hold / Slide window;
 - **spectral object shaping** where high-frequency transients can favour sharper Slide-like motion while low/mid body can favour sustained events;
 - **difficulty-specific subdivisions**: higher difficulties may use half-beats and quarter-beats while Easy focuses on the rhythmic skeleton;
 - **burst-aware star rating** using local density and sustain ratio in addition to BPM and average note density.
@@ -153,6 +157,17 @@ The generator creates four difficulty variants:
 | Expert | Quarter-beat options, denser peak tracking and the highest local burst budget |
 
 Generated charts remain deterministic for the same analysis input.
+
+## Hold / sustain handling
+
+v0.4 also tightens long-note generation and judgment:
+
+- minimum meaningful Hold duration varies by difficulty;
+- Hold / Slide duration is quantized from the **local tempo segment**;
+- FORGE generation reserves the sustain span plus a short recovery gap, preventing impossible notes from appearing inside the same long press;
+- the validator shortens an overlapping sustain when enough room remains;
+- if the remaining sustain would be too short to be meaningful, it is downgraded to a Tap;
+- Pointer and Lane engines use a short release-grace window so brief input jitter does not immediately break a long note.
 
 ## Beatmap Validator
 
@@ -247,8 +262,10 @@ Audio File / Direct Audio URL
  Energy + Onset Envelope
           |
           +--> Low / Mid / High band envelopes
-          +--> BPM estimation
-          +--> Beat phase tracking
+          +--> high-resolution rhythm envelope
+          +--> global BPM estimation
+          +--> local tempo segmentation
+          +--> per-segment beat phase
           +--> Peak detection
           |
           v
@@ -317,8 +334,8 @@ Current test coverage includes:
 
 The current version still has several known limitations:
 
-- audio analysis assumes mostly constant tempo
-- variable-BPM / tempo-section tracking is not implemented yet
+- tempo-map detection currently targets **major section-level BPM changes** using local analysis windows;
+- continuous accelerando / ritardando and very rapid tempo automation are not yet modeled as a continuous tempo curve
 - direct URL import depends on browser CORS permissions
 - Forge Pointer mode still uses a single active pointer / key sustain state
 - generated charts intentionally avoid simultaneous chord objects; true chord authoring is not implemented yet
@@ -334,7 +351,7 @@ Planned / likely next improvements include:
 - richer Hold and Slide feedback
 - interactive timing calibration
 - true chord authoring for 4K
-- variable-BPM tracking
+- continuous tempo-curve tracking for accelerando / ritardando
 - beatmap editor
 - replay files
 - song fingerprinting
