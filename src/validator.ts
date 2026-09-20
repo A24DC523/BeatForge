@@ -7,6 +7,20 @@ export interface ValidationReport {
   warnings: string[];
 }
 
+const MIN_SUSTAIN_MS: Record<DifficultyId, number> = {
+  easy: 480,
+  normal: 420,
+  hard: 360,
+  expert: 320,
+};
+
+const SUSTAIN_GAP_MS: Record<DifficultyId, number> = {
+  easy: 140,
+  normal: 120,
+  hard: 90,
+  expert: 70,
+};
+
 const SPEED_LIMIT: Record<DifficultyId, number> = {
   easy: 0.8,
   normal: 1.2,
@@ -72,8 +86,9 @@ export function validateAndRepairObjects(
     }
 
     if (object.type !== 'tap') {
+      const minimum = MIN_SUSTAIN_MS[difficulty];
       const remaining = durationMs - object.time - 100;
-      if (remaining < 180) {
+      if (remaining < minimum) {
         object.type = 'tap';
         delete object.duration;
         delete object.endX;
@@ -83,9 +98,9 @@ export function validateAndRepairObjects(
       } else {
         const oldDuration = object.duration;
         object.duration = clamp(
-          Number.isFinite(object.duration) ? object.duration! : 250,
-          180,
-          Math.max(180, remaining),
+          Number.isFinite(object.duration) ? object.duration! : minimum,
+          minimum,
+          Math.max(minimum, remaining),
         );
         if (object.duration !== oldDuration) {
           repaired += 1;
@@ -99,6 +114,24 @@ export function validateAndRepairObjects(
       removed += 1;
       warnings.add('duplicate-time');
       continue;
+    }
+
+    if (previous && previous.type !== 'tap' && previous.duration) {
+      const minimum = MIN_SUSTAIN_MS[difficulty];
+      const maxDuration = object.time - previous.time - SUSTAIN_GAP_MS[difficulty];
+
+      if (previous.duration > maxDuration) {
+        if (maxDuration >= minimum) {
+          previous.duration = maxDuration;
+        } else {
+          previous.type = 'tap';
+          delete previous.duration;
+          delete previous.endX;
+          delete previous.endY;
+        }
+        repaired += 1;
+        warnings.add('sustain-overlap');
+      }
     }
 
     if (previous && clampTravel(previous, object, difficulty)) {
