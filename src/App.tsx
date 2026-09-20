@@ -110,6 +110,7 @@ export default function App() {
   const [offsetMs, setOffsetMs] = useState(() => loadNumber('beatforge.offset', 0));
   const [volume, setVolume] = useState(() => loadNumber('beatforge.volume', 0.82));
   const [bestScores, setBestScores] = useState<Record<string, BestRecord>>(() => loadBestScores());
+  const [latencyInfo, setLatencyInfo] = useState('');
 
   useEffect(() => {
     try {
@@ -123,6 +124,34 @@ export default function App() {
   useEffect(() => () => {
     if (previousUrlRef.current) URL.revokeObjectURL(previousUrlRef.current);
   }, []);
+
+  const estimateDeviceLatency = async () => {
+    setLatencyInfo('正在讀取音訊裝置延遲…');
+    let context: AudioContext | null = null;
+    try {
+      context = new AudioContext({ latencyHint: 'interactive' });
+      if (context.state === 'suspended') await context.resume();
+
+      const baseMs = Math.max(0, context.baseLatency || 0) * 1000;
+      const outputMs = Math.max(0, context.outputLatency || 0) * 1000;
+      const estimatedMs = Math.round(baseMs + outputMs);
+
+      if (estimatedMs <= 0) {
+        setLatencyInfo('瀏覽器未提供可用的延遲數值，請保留手動 Offset。');
+        return;
+      }
+
+      const recommended = Math.max(-200, Math.min(200, -estimatedMs));
+      setOffsetMs(recommended);
+      setLatencyInfo(
+        `估算輸出延遲約 ${estimatedMs} ms，已套用 ${recommended} ms Offset。可再按手感微調。`,
+      );
+    } catch {
+      setLatencyInfo('目前瀏覽器無法自動估算延遲，請使用手動 Offset。');
+    } finally {
+      await context?.close().catch(() => undefined);
+    }
+  };
 
   const processFile = async (file: File) => {
     setError('');
@@ -515,7 +544,12 @@ export default function App() {
               <small>如果你覺得音符總是偏早或偏遲，可調整全域判定偏移。藍牙耳機通常需要較大的補償。</small>
             </label>
 
-            <button className="secondary-button full" type="button" onClick={() => { setOffsetMs(0); setVolume(0.82); }}>
+            <button className="secondary-button full" type="button" onClick={() => void estimateDeviceLatency()}>
+              <AudioLines size={17} />估算裝置音訊延遲
+            </button>
+            {latencyInfo && <p className="latency-info">{latencyInfo}</p>}
+
+            <button className="secondary-button full" type="button" onClick={() => { setOffsetMs(0); setVolume(0.82); setLatencyInfo(''); }}>
               重設為預設值
             </button>
 
