@@ -6,13 +6,13 @@
 
 BeatForge is a browser-first rhythm game that analyzes a user's own audio and automatically turns it into playable rhythm charts.
 
-The project is currently in the **v0.3.0 series** and is playable on desktop and mobile through GitHub Pages. v0.3 expands BeatForge into a multi-mode rhythm platform and introduces a phrase-aware beatmap generator.
+The project is currently in the **v0.3.1 series** and is playable on desktop and mobile through GitHub Pages. v0.3 expands BeatForge into a multi-mode rhythm platform and introduces a phrase-aware beatmap generator.
 
 ## Highlights
 
 - Upload your own MP3, WAV, M4A, AAC, OGG, or FLAC
 - Direct-audio URL import when the source permits browser CORS
-- Browser-side BPM, beat, onset, and energy analysis
+- Browser-side BPM, beat, onset, energy, and Low / Mid / High spectral-band analysis
 - Phrase-aware Easy / Normal / Hard / Expert beatmap generation
 - Six gameplay modes: Forge, 4K Lanes, 2K Split, 1K Pulse, Drum, and Catch
 - Tap, Hold, and Slide objects
@@ -126,17 +126,20 @@ BeatForge analyzes the decoded song in-browser and builds timing data from:
 - beat-phase estimation
 - peak detection
 - local phrase energy across multi-beat windows
+- Low / Mid / High frequency-band envelopes
 - beat-strength / downbeat weighting
 
 The v0.3 generator does more than randomly thin a master timing list. It now applies:
 
 - **strong / weak beat weighting** so downbeats and backbeats are more likely to define the chart skeleton;
+- **spectral-aware timing weight** so low-frequency impact strengthens main beats while mid/high transients can reinforce subdivisions and peak events;
 - **phrase-aware density** so energetic sections naturally become busier while quieter sections leave more breathing room;
 - **peak quantization** that snaps suitable transients toward the musical grid without forcing every transient onto a beat;
 - **local density budgets** to prevent short sections from turning into unreadable note spam;
 - **pattern continuity** so pointer-mode positions form short deterministic motion phrases instead of unrelated jumps;
 - **anti-repetition rules** that reduce immediate 180-degree reversals on easier charts;
 - **sustain pacing** that keeps Hold / Slide objects from stacking back-to-back;
+- **spectral object shaping** where high-frequency transients can favour sharper Slide-like motion while low/mid body can favour sustained events;
 - **difficulty-specific subdivisions**: higher difficulties may use half-beats and quarter-beats while Easy focuses on the rhythmic skeleton;
 - **burst-aware star rating** using local density and sustain ratio in addition to BPM and average note density.
 
@@ -182,10 +185,10 @@ The settings panel also includes an optional Web Audio device-latency estimate b
 | Mode | Desktop | Mobile | Core idea |
 | --- | --- | --- | --- |
 | **FORGE** | Mouse + Z / X | Tap / hold / drag | Free-position Pointer gameplay with Tap, Hold and Slide |
-| **4K LANES** | D / F / J / K | Tap four lanes | Four-key falling-note lane mode |
+| **4K LANES** | D / F / J / K | Tap four lanes | Four-key falling-note lane mode; low-frequency hits favour inner lanes while high-frequency transients favour outer lanes |
 | **2K SPLIT** | F / J | Tap left / right | Fast two-lane alternating rhythm |
 | **1K PULSE** | Space | Tap anywhere | Pure timing mode with no aiming |
-| **DRUM** | F / J = Don, D / K = Ka | Tap left / right drum side | Red / blue Don-Ka rhythm recognition |
+| **DRUM** | F / J = Don, D / K = Ka | Tap left / right drum side | Spectral Don / Ka mapping: low-frequency impact tends toward Don, high-frequency transient content tends toward Ka |
 | **CATCH** | Left / Right or A / D | Drag horizontally | Move the catcher and intercept notes at the judgment line |
 
 Each mode shares the same song analysis, difficulty system, scoring model, Hit Sound engine and result screen, while keeping separate local best-score records.
@@ -243,6 +246,7 @@ Audio File / Direct Audio URL
           v
  Energy + Onset Envelope
           |
+          +--> Low / Mid / High band envelopes
           +--> BPM estimation
           +--> Beat phase tracking
           +--> Peak detection
@@ -261,6 +265,7 @@ Audio File / Direct Audio URL
  Phrase-aware Beatmap Generator
           |
           +--> beat strength / phrase energy
+          +--> spectral weighting
           +--> peak quantization
           +--> local density budget
           +--> pattern continuity
@@ -330,7 +335,6 @@ Planned / likely next improvements include:
 - interactive timing calibration
 - true chord authoring for 4K
 - variable-BPM tracking
-- richer spectral / frequency-band analysis
 - beatmap editor
 - replay files
 - song fingerprinting
