@@ -106,8 +106,16 @@ function adaptFourLane(objects: HitObject[], difficulty: DifficultyId) {
 
   return objects.map((source, index) => {
     const object = cloneObject(source);
+    const low = source.bandLow ?? 0.5;
+    const high = source.bandHigh ?? 0.5;
     let lane = fourLanePattern(index, difficulty);
     const time = object.time;
+
+    if (low > high * 1.18) {
+      lane = index % 2 === 0 ? 1 : 2;
+    } else if (high > low * 1.18) {
+      lane = index % 2 === 0 ? 0 : 3;
+    }
 
     if (laneFreeAt[lane] > time - 35) {
       const alternatives = [0, 1, 2, 3]
