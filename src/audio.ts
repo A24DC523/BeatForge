@@ -1,6 +1,8 @@
 import type { AudioAnalysis } from './types';
 
 const FRAME_SIZE = 2048;
+const RHYTHM_WINDOW_SIZE = 1024;
+const RHYTHM_HOP_SIZE = 512;
 const MIN_BPM = 70;
 const MAX_BPM = 190;
 
@@ -104,6 +106,38 @@ function buildAudioEnvelopes(buffer: AudioBuffer) {
     energy: normalize(smoothedEnergy),
     bands,
     framesPerSecond: sampleRate / FRAME_SIZE,
+  };
+}
+
+function buildRhythmEnvelope(buffer: AudioBuffer) {
+  const { numberOfChannels, length, sampleRate } = buffer;
+  const frames = Math.max(
+    1,
+    Math.floor(Math.max(0, length - RHYTHM_WINDOW_SIZE) / RHYTHM_HOP_SIZE) + 1,
+  );
+  const energy = new Array<number>(frames).fill(0);
+
+  for (let frame = 0; frame < frames; frame += 1) {
+    const start = frame * RHYTHM_HOP_SIZE;
+    const end = Math.min(start + RHYTHM_WINDOW_SIZE, length);
+    let sum = 0;
+    let count = 0;
+
+    for (let channel = 0; channel < numberOfChannels; channel += 1) {
+      const data = buffer.getChannelData(channel);
+      for (let i = start; i < end; i += 4) {
+        const sample = data[i] ?? 0;
+        sum += sample * sample;
+        count += 1;
+      }
+    }
+
+    energy[frame] = count > 0 ? Math.sqrt(sum / count) : 0;
+  }
+
+  return {
+    energy: normalize(smooth(energy)),
+    framesPerSecond: sampleRate / RHYTHM_HOP_SIZE,
   };
 }
 
@@ -324,8 +358,10 @@ function detectPeaks(onset: number[], framesPerSecond: number) {
 }
 
 export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioAnalysis> {
-  const { energy, bands, framesPerSecond } = buildAudioEnvelopes(buffer);
-  const onset = onsetEnvelope(energy);
+  const { energy, bands } = buildAudioEnvelopes(buffer);
+  const rhythm = buildRhythmEnvelope(buffer);
+  const framesPerSecond = rhythm.framesPerSecond;
+  const onset = onsetEnvelope(rhythm.energy);
   const bpm = estimateBpm(onset, framesPerSecond);
   const beatInterval = 60 / bpm;
   let beatOffset = estimateBeatOffset(onset, framesPerSecond, bpm);
