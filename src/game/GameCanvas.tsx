@@ -19,6 +19,7 @@ interface ActiveSustain {
   object: HitObject;
   judge: Exclude<Judge, 'miss'>;
   broken: boolean;
+  releasedAt?: number;
 }
 
 interface HitBurst {
@@ -247,17 +248,27 @@ export function GameCanvas({
 
   const validateSustains = useCallback((nowMs: number) => {
     const pressed = pointerDownRef.current || keyDownRef.current;
+    const releaseGraceMs = Math.max(55, Math.min(110, beatmap.hitWindowMs * 0.65));
+
     for (const active of engagedRef.current.values()) {
+      const endTime = active.object.time + (active.object.duration ?? 0);
+
       if (!pressed) {
-        active.broken = true;
+        if (active.releasedAt === undefined) active.releasedAt = nowMs;
+        const releasedFor = nowMs - active.releasedAt;
+        if (nowMs < endTime - releaseGraceMs && releasedFor > releaseGraceMs) {
+          active.broken = true;
+        }
         continue;
       }
+
+      active.releasedAt = undefined;
       if (active.object.type === 'slide') {
         const target = currentTargetFor(active.object, nowMs);
         if (distance(target, cursorRef.current) > 0.19) active.broken = true;
       }
     }
-  }, [currentTargetFor]);
+  }, [beatmap.hitWindowMs, currentTargetFor]);
 
   const attemptHit = useCallback((point: { x: number; y: number }) => {
     if (status !== 'playing') return;
@@ -664,12 +675,6 @@ export function GameCanvas({
       if (!['z', 'x', 'Z', 'X'].includes(event.key)) return;
       event.preventDefault();
       keyDownRef.current = false;
-      for (const active of engagedRef.current.values()) {
-        const audio = audioRef.current;
-        if (audio && audio.currentTime * 1000 + offsetMs < active.object.time + (active.object.duration ?? 0) - 40) {
-          active.broken = true;
-        }
-      }
     };
 
     root.addEventListener('keydown', onKeyDown);
@@ -707,12 +712,6 @@ export function GameCanvas({
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     pointerDownRef.current = false;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-    const audio = audioRef.current;
-    if (!audio) return;
-    const nowMs = audio.currentTime * 1000 + offsetMs;
-    for (const active of engagedRef.current.values()) {
-      if (nowMs < active.object.time + (active.object.duration ?? 0) - 40) active.broken = true;
-    }
   };
 
   const start = async () => {
