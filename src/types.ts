@@ -1,4 +1,5 @@
 export type DifficultyId = 'easy' | 'normal' | 'hard' | 'expert';
+export type GameModeId = 'forge' | 'lanes4' | 'split2' | 'pulse1';
 export type HitObjectType = 'tap' | 'hold' | 'slide';
 export type Judge = 'perfect' | 'great' | 'good' | 'miss';
 
