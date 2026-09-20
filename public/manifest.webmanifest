@@ -1,0 +1,19 @@
+{
+  "name": "BeatForge — Turn Music Into Play",
+  "short_name": "BeatForge",
+  "description": "Turn your own music into a playable rhythm game directly in the browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#080a10",
+  "theme_color": "#0b0d14",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
