@@ -281,6 +281,22 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
     const unit = Math.min(w, h);
     ctx.clearRect(0, 0, w, h);
 
+    const effectNow = performance.now();
+    hitBurstsRef.current = hitBurstsRef.current.filter((burst) => effectNow - burst.at < 460);
+
+    let shakeX = 0;
+    let shakeY = 0;
+    for (const burst of hitBurstsRef.current) {
+      const age = effectNow - burst.at;
+      if (age > 95) continue;
+      const strength = (burst.judge === 'perfect' ? 4.2 : burst.judge === 'great' ? 2.8 : 1.6) * (1 - age / 95);
+      shakeX += Math.sin(burst.seed * 0.013 + effectNow * 0.095) * strength;
+      shakeY += Math.cos(burst.seed * 0.017 + effectNow * 0.11) * strength * 0.65;
+    }
+
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
+
     const gradient = ctx.createRadialGradient(w * 0.5, h * 0.45, 10, w * 0.5, h * 0.5, Math.max(w, h) * 0.75);
     gradient.addColorStop(0, '#181e31');
     gradient.addColorStop(0.55, '#0d1120');
@@ -377,6 +393,72 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
       }
     }
 
+
+    for (const burst of hitBurstsRef.current) {
+      const age = effectNow - burst.at;
+      const progress = Math.max(0, Math.min(1, age / 460));
+      const fade = 1 - progress;
+      const x = burst.x * w;
+      const y = burst.y * h;
+      const color =
+        burst.judge === 'perfect' ? '#8ff3dc' :
+        burst.judge === 'great' ? '#88dcff' :
+        '#ffd784';
+      const strength =
+        burst.judge === 'perfect' ? 1 :
+        burst.judge === 'great' ? 0.76 :
+        0.52;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, 70 + progress * 55);
+      glow.addColorStop(0, color);
+      glow.addColorStop(0.18, color);
+      glow.addColorStop(1, 'transparent');
+      ctx.globalAlpha = fade * 0.16 * strength;
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, 76 + progress * 58, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = fade * 0.9 * strength;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.5, 5 * (1 - progress));
+      ctx.beginPath();
+      ctx.arc(x, y, 26 + progress * 66, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalAlpha = fade * 0.72 * strength;
+      ctx.lineWidth = Math.max(1, 3.6 * (1 - progress));
+      const streaks = burst.judge === 'perfect' ? 12 : burst.judge === 'great' ? 9 : 6;
+      for (let i = 0; i < streaks; i += 1) {
+        const angle = (Math.PI * 2 * i) / streaks + Math.sin(burst.seed + i * 2.17) * 0.22;
+        const inner = 20 + progress * 15;
+        const outer = inner + (30 + Math.abs(Math.sin(burst.seed * 0.1 + i)) * 34) * fade;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(angle) * inner, y + Math.sin(angle) * inner);
+        ctx.lineTo(x + Math.cos(angle) * outer, y + Math.sin(angle) * outer);
+        ctx.stroke();
+      }
+
+      const sparks = burst.judge === 'perfect' ? 10 : burst.judge === 'great' ? 7 : 4;
+      ctx.fillStyle = color;
+      for (let i = 0; i < sparks; i += 1) {
+        const angle = Math.sin(burst.seed * 0.071 + i * 4.37) * Math.PI * 2;
+        const travel = (18 + Math.abs(Math.cos(burst.seed + i)) * 58) * progress;
+        const px = x + Math.cos(angle) * travel;
+        const py = y + Math.sin(angle) * travel;
+        const radius = Math.max(1, 4.5 * fade * strength);
+        ctx.globalAlpha = fade * 0.92;
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
     if (!isTouch) {
       const cursor = cursorRef.current;
       const cx = cursor.x * w;
@@ -393,6 +475,8 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+
+    ctx.restore();
   }, [beatmap, currentTargetFor, isTouch]);
 
   const frame = useCallback(() => {
