@@ -8,6 +8,7 @@ interface Props {
   offsetMs: number;
   volume: number;
   onExit: () => void;
+  onFinish?: (result: ScoreState) => void;
 }
 
 type GameStatus = 'ready' | 'playing' | 'paused' | 'finished';
@@ -66,7 +67,7 @@ function resultRank(accuracy: number, misses: number) {
   return 'D';
 }
 
-export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit }: Props) {
+export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFinish }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -78,6 +79,7 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit }: Prop
   const pointerDownRef = useRef(false);
   const keyDownRef = useRef(false);
   const lastJudgeRef = useRef<{ text: string; at: number } | null>(null);
+  const resultReportedRef = useRef(false);
   const [status, setStatus] = useState<GameStatus>('ready');
   const [score, setScore] = useState<ScoreState>(() => ({ ...EMPTY_SCORE, totalObjects: beatmap.objects.length }));
   const [progress, setProgress] = useState(0);
@@ -93,6 +95,7 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit }: Prop
     pointerDownRef.current = false;
     keyDownRef.current = false;
     lastJudgeRef.current = null;
+    resultReportedRef.current = false;
     cursorRef.current = { x: 0.5, y: 0.5 };
   }, []);
 
@@ -381,6 +384,17 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit }: Prop
     const audio = audioRef.current;
     if (audio) audio.volume = volume;
   }, [volume]);
+
+  useEffect(() => {
+    if (
+      status === 'finished' &&
+      score.judged >= score.totalObjects &&
+      !resultReportedRef.current
+    ) {
+      resultReportedRef.current = true;
+      onFinish?.(score);
+    }
+  }, [onFinish, score, status]);
 
   useEffect(() => {
     const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
