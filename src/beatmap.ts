@@ -1,4 +1,5 @@
 import type { AudioAnalysis, Beatmap, DifficultyId, DifficultyPreset, HitObject } from './types';
+import { validateAndRepairObjects } from './validator';
 
 export const DIFFICULTIES: DifficultyPreset[] = [
   {
@@ -94,7 +95,19 @@ function candidateTimes(analysis: AudioAnalysis, difficulty: DifficultyId) {
 
   if (difficulty !== 'easy') {
     for (const peak of analysis.peaks) {
-      const nearestBeatDistance = Math.min(...analysis.beats.slice(0, 6000).map((beatTime) => Math.abs(beatTime - peak)), 99);
+      let low = 0;
+      let high = analysis.beats.length - 1;
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (analysis.beats[mid] < peak) low = mid + 1;
+        else high = mid;
+      }
+      const right = analysis.beats[low];
+      const left = analysis.beats[Math.max(0, low - 1)];
+      const nearestBeatDistance = Math.min(
+        Number.isFinite(left) ? Math.abs(left - peak) : 99,
+        Number.isFinite(right) ? Math.abs(right - peak) : 99,
+      );
       if (nearestBeatDistance > Math.min(analysis.beatInterval * 0.18, 0.09)) {
         times.push({ time: peak, weight: 0.68 + energyAt(analysis, peak) * 0.35 });
       }
@@ -179,7 +192,12 @@ export function generateBeatmap(
   }
 
   const safeObjects = objects.filter((object) => object.time < analysis.duration * 1000 - 250);
-  const densityPerSecond = safeObjects.length / Math.max(analysis.duration, 1);
+  const validated = validateAndRepairObjects(
+    safeObjects,
+    analysis.duration * 1000,
+    difficulty,
+  );
+  const densityPerSecond = validated.objects.length / Math.max(analysis.duration, 1);
   const starRating = clamp(
     preset.starBase + (densityPerSecond - preset.density) * 0.6 + (analysis.bpm - 120) / 150,
     1,
@@ -197,7 +215,8 @@ export function generateBeatmap(
     duration: analysis.duration,
     approachMs: preset.approachMs,
     hitWindowMs: preset.hitWindowMs,
-    objects: safeObjects,
+    objects: validated.objects,
+    validation: validated.report,
   };
 }
 
