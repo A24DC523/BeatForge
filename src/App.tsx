@@ -109,6 +109,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [offsetMs, setOffsetMs] = useState(() => loadNumber('beatforge.offset', 0));
   const [volume, setVolume] = useState(() => loadNumber('beatforge.volume', 0.82));
+  const [hitSoundVolume, setHitSoundVolume] = useState(() => loadNumber('beatforge.hitSoundVolume', 0.55));
   const [bestScores, setBestScores] = useState<Record<string, BestRecord>>(() => loadBestScores());
   const [latencyInfo, setLatencyInfo] = useState('');
 
@@ -116,10 +117,11 @@ export default function App() {
     try {
       localStorage.setItem('beatforge.offset', String(offsetMs));
       localStorage.setItem('beatforge.volume', String(volume));
+      localStorage.setItem('beatforge.hitSoundVolume', String(hitSoundVolume));
     } catch {
       // Local persistence is optional.
     }
-  }, [offsetMs, volume]);
+  }, [hitSoundVolume, offsetMs, volume]);
 
   useEffect(() => () => {
     if (previousUrlRef.current) URL.revokeObjectURL(previousUrlRef.current);
@@ -286,6 +288,7 @@ export default function App() {
         audioUrl={song.url}
         offsetMs={offsetMs}
         volume={volume}
+        hitSoundVolume={hitSoundVolume}
         onExit={() => setStage('select')}
         onFinish={saveBestResult}
       />
@@ -539,6 +542,19 @@ export default function App() {
             </label>
 
             <label className="range-setting">
+              <div><strong>Hit Sound</strong><span>{Math.round(hitSoundVolume * 100)}%</span></div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={hitSoundVolume}
+                onChange={(event) => setHitSoundVolume(Number(event.target.value))}
+              />
+              <small>調整按中音符時的打擊音效音量，不會改變歌曲本身音量。</small>
+            </label>
+
+            <label className="range-setting">
               <div><strong>Timing Offset</strong><span>{offsetMs > 0 ? '+' : ''}{offsetMs} ms</span></div>
               <input type="range" min="-200" max="200" step="1" value={offsetMs} onChange={(event) => setOffsetMs(Number(event.target.value))} />
               <small>如果你覺得音符總是偏早或偏遲，可調整全域判定偏移。藍牙耳機通常需要較大的補償。</small>
@@ -549,7 +565,7 @@ export default function App() {
             </button>
             {latencyInfo && <p className="latency-info">{latencyInfo}</p>}
 
-            <button className="secondary-button full" type="button" onClick={() => { setOffsetMs(0); setVolume(0.82); setLatencyInfo(''); }}>
+            <button className="secondary-button full" type="button" onClick={() => { setOffsetMs(0); setVolume(0.82); setHitSoundVolume(0.55); setLatencyInfo(''); }}>
               重設為預設值
             </button>
 
