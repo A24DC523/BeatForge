@@ -213,7 +213,7 @@ export default function App() {
               <ArrowLeft size={17} />換一首歌
             </button>
           )}
-          <a className="ghost-button desktop-only" href="https://github.com/jacksin2031/BeatForge" target="_blank" rel="noreferrer">
+          <a className="ghost-button desktop-only" href="https://github.com/A24DC523/BeatForge" target="_blank" rel="noreferrer">
             <Github size={17} />GitHub
           </a>
           <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="設定">
