@@ -361,6 +361,46 @@ function sustainType(
   return 'tap' as const;
 }
 
+function sustainDurationMs(
+  candidate: Candidate,
+  analysis: AudioAnalysis,
+  difficulty: DifficultyId,
+  type: 'hold' | 'slide',
+) {
+  const beatMs = analysis.beatInterval * 1000;
+  const minimum =
+    difficulty === 'easy' ? 520 :
+    difficulty === 'normal' ? 470 :
+    difficulty === 'hard' ? 420 :
+    360;
+
+  let beats = Math.max(1, Math.ceil(minimum / Math.max(beatMs, 1)));
+  const body =
+    candidate.bandLow * 0.9 +
+    candidate.bandMid * 0.75 -
+    candidate.bandHigh * 0.55;
+
+  const shouldExtend =
+    candidate.phraseEnergy > 0.58 &&
+    body > 0.42 &&
+    seeded(candidate.time * 1000 + candidate.beatIndex * 43) > 0.48;
+
+  if (shouldExtend) beats += 1;
+  if (type === 'slide' && candidate.phraseEnergy > 0.72) beats = Math.max(beats, 2);
+
+  return Math.round(beatMs * Math.min(beats, 2));
+}
+
+function sustainRecoveryMs(analysis: AudioAnalysis, difficulty: DifficultyId) {
+  const beatMs = analysis.beatInterval * 1000;
+  const cap =
+    difficulty === 'easy' ? 170 :
+    difficulty === 'normal' ? 135 :
+    difficulty === 'hard' ? 105 :
+    80;
+  return Math.max(55, Math.min(cap, beatMs * 0.24));
+}
+
 function shouldKeepCandidate(
   candidate: Candidate,
   index: number,
@@ -401,10 +441,12 @@ export function generateBeatmap(
   const objects: HitObject[] = [];
   const recentTimes: number[] = [];
   let lastTime = -Infinity;
+  let occupiedUntil = -Infinity;
 
   for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
     const candidate = candidates[candidateIndex];
     const timeMs = candidate.time * 1000;
+    if (timeMs < occupiedUntil) continue;
 
     if (!shouldKeepCandidate(
       candidate,
@@ -444,12 +486,8 @@ export function generateBeatmap(
     };
 
     if (type !== 'tap') {
-      const highEnergy = candidate.phraseEnergy > 0.68;
-      const durationBeats =
-        type === 'slide'
-          ? 1 + (highEnergy && seeded(timeMs + 17) > 0.58 ? 1 : 0)
-          : 1;
-      object.duration = Math.round(analysis.beatInterval * 1000 * durationBeats);
+      object.duration = sustainDurationMs(candidate, analysis, difficulty, type);
+      occupiedUntil = timeMs + object.duration + sustainRecoveryMs(analysis, difficulty);
 
       if (type === 'slide') {
         const end = positionFor(
