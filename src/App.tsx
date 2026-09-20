@@ -25,12 +25,40 @@ import { decodeAudioFile, fetchAudioUrl } from './audio';
 import { DIFFICULTIES, generateAllBeatmaps } from './beatmap';
 import { createDemoFile } from './demo';
 import { GameCanvas } from './game/GameCanvas';
-import type { AudioAnalysis, Beatmap, DifficultyId, SongSource } from './types';
+import type { AudioAnalysis, Beatmap, DifficultyId, ScoreState, SongSource } from './types';
 
 type Stage = 'home' | 'analyzing' | 'select' | 'game';
 
 const ACCEPT = '.mp3,.wav,.m4a,.aac,.ogg,.flac,audio/*';
 const MAX_FILE_MB = 150;
+
+interface BestRecord {
+  score: number;
+  accuracy: number;
+  maxCombo: number;
+  miss: number;
+  playedAt: number;
+}
+
+function loadBestScores(): Record<string, BestRecord> {
+  try {
+    const raw = localStorage.getItem('beatforge.bestScores');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function scoreKey(song: SongSource, map: Beatmap) {
+  return [
+    song.title.toLowerCase(),
+    Math.round(map.bpm * 10),
+    Math.round(map.duration * 10),
+    map.difficulty,
+  ].join('|');
+}
 
 function formatDuration(seconds: number) {
   const safe = Math.max(0, Math.round(seconds));
@@ -81,6 +109,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [offsetMs, setOffsetMs] = useState(() => loadNumber('beatforge.offset', 0));
   const [volume, setVolume] = useState(() => loadNumber('beatforge.volume', 0.82));
+  const [bestScores, setBestScores] = useState<Record<string, BestRecord>>(() => loadBestScores());
 
   useEffect(() => {
     try {
@@ -181,6 +210,40 @@ export default function App() {
   };
 
   const selectedMap = beatmaps?.[selectedDifficulty] ?? null;
+  const selectedBest = useMemo(() => {
+    if (!song || !selectedMap) return null;
+    return bestScores[scoreKey(song, selectedMap)] ?? null;
+  }, [bestScores, selectedMap, song]);
+
+  const saveBestResult = (result: ScoreState) => {
+    if (!song || !selectedMap) return;
+    const key = scoreKey(song, selectedMap);
+    const previous = bestScores[key];
+    const improved =
+      !previous ||
+      result.score > previous.score ||
+      (result.score === previous.score && result.accuracy > previous.accuracy);
+
+    if (!improved) return;
+
+    const next: Record<string, BestRecord> = {
+      ...bestScores,
+      [key]: {
+        score: result.score,
+        accuracy: result.accuracy,
+        maxCombo: result.maxCombo,
+        miss: result.miss,
+        playedAt: Date.now(),
+      },
+    };
+
+    setBestScores(next);
+    try {
+      localStorage.setItem('beatforge.bestScores', JSON.stringify(next));
+    } catch {
+      // Score persistence is optional.
+    }
+  };
 
   const noteCountText = useMemo(() => {
     if (!beatmaps) return '—';
@@ -195,6 +258,7 @@ export default function App() {
         offsetMs={offsetMs}
         volume={volume}
         onExit={() => setStage('select')}
+        onFinish={saveBestResult}
       />
     );
   }
@@ -414,6 +478,9 @@ export default function App() {
                   {selectedMap.validation.repaired > 0
                     ? `Validator repaired ${selectedMap.validation.repaired}`
                     : 'Validator PASS'}
+                  {selectedBest
+                    ? ` · Best ${selectedBest.score.toLocaleString()} · ${selectedBest.accuracy.toFixed(2)}%`
+                    : ''}
                 </p>
               </div>
               <button className="primary-button play-button" type="button" onClick={() => setStage('game')}>
@@ -425,7 +492,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <span>BeatForge v0.1 · Turn Music Into Play</span>
+        <span>BeatForge v0.2 · Turn Music Into Play</span>
         <span>Local-first audio processing</span>
       </footer>
 
