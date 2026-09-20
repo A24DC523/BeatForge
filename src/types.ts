@@ -25,6 +25,13 @@ export interface HitObject {
   weight: number;
 }
 
+export interface BeatmapValidation {
+  valid: boolean;
+  repaired: number;
+  removed: number;
+  warnings: string[];
+}
+
 export interface Beatmap {
   version: 1;
   title: string;
@@ -37,6 +44,7 @@ export interface Beatmap {
   approachMs: number;
   hitWindowMs: number;
   objects: HitObject[];
+  validation: BeatmapValidation;
 }
 
 export interface DifficultyPreset {
