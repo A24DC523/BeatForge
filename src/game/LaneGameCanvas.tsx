@@ -77,6 +77,9 @@ function rankFor(accuracy: number, misses: number) {
 
 function laneFor(object: HitObject, lanes: number) {
   if (lanes <= 1) return 0;
+  if (Number.isInteger(object.lane)) {
+    return Math.max(0, Math.min(lanes - 1, object.lane!));
+  }
   const mixed = (object.x * 0.72 + ((object.id * 0.61803398875) % 1) * 0.28) % 1;
   return Math.max(0, Math.min(lanes - 1, Math.floor(mixed * lanes)));
 }
