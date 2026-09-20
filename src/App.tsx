@@ -24,6 +24,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { decodeAudioFile, fetchAudioUrl } from './audio';
 import { DIFFICULTIES, generateAllBeatmaps } from './beatmap';
 import { createDemoFile } from './demo';
+import { CatchGameCanvas } from './game/CatchGameCanvas';
+import { DrumGameCanvas } from './game/DrumGameCanvas';
 import { GameCanvas } from './game/GameCanvas';
 import { LaneGameCanvas } from './game/LaneGameCanvas';
 import { GAME_MODES, gameModeById } from './game/modes';
@@ -289,30 +291,24 @@ export default function App() {
   }, [beatmaps, selectedDifficulty]);
 
   if (stage === 'game' && song && selectedMap) {
-    if (selectedMode === 'forge') {
-      return (
-        <GameCanvas
-          beatmap={selectedMap}
-          audioUrl={song.url}
-          offsetMs={offsetMs}
-          volume={volume}
-          hitSoundVolume={hitSoundVolume}
-          onExit={() => setStage('select')}
-          onFinish={saveBestResult}
-        />
-      );
-    }
+    const shared = {
+      beatmap: selectedMap,
+      audioUrl: song.url,
+      offsetMs,
+      volume,
+      hitSoundVolume,
+      onExit: () => setStage('select' as const),
+      onFinish: saveBestResult,
+    };
+
+    if (selectedMode === 'forge') return <GameCanvas {...shared} />;
+    if (selectedMode === 'drum') return <DrumGameCanvas {...shared} />;
+    if (selectedMode === 'catch') return <CatchGameCanvas {...shared} />;
 
     return (
       <LaneGameCanvas
-        beatmap={selectedMap}
-        audioUrl={song.url}
+        {...shared}
         mode={selectedMode}
-        offsetMs={offsetMs}
-        volume={volume}
-        hitSoundVolume={hitSoundVolume}
-        onExit={() => setStage('select')}
-        onFinish={saveBestResult}
       />
     );
   }
@@ -426,7 +422,7 @@ export default function App() {
             </article>
             <article>
               <span className="feature-icon"><Gamepad2 size={22} /></span>
-              <div><strong>Real Gameplay</strong><p>Circle、Hold、Slide、Combo 與完整判定。</p></div>
+              <div><strong>6 Game Modes</strong><p>Pointer、4K、2K、1K、Drum、Catch 共用自動譜面核心。</p></div>
             </article>
           </section>
 
@@ -490,7 +486,7 @@ export default function App() {
             <div className="section-heading compact">
               <div><span className="eyebrow">SELECT MODE</span><h2>選擇遊玩方式</h2></div>
               <div className="control-legend">
-                <span><Gamepad2 size={15} />4 種玩法共用同一首歌</span>
+                <span><Gamepad2 size={15} />6 種玩法共用同一首歌</span>
               </div>
             </div>
 
