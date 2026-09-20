@@ -47,6 +47,27 @@ describe('BeatForge beatmap generator', () => {
     const analysis = fakeAnalysis();
     expect(generateBeatmap(analysis, 'hard')).toEqual(generateBeatmap(analysis, 'hard'));
   });
+
+  it('uses local energy to make intense song sections denser', () => {
+    const analysis = fakeAnalysis();
+    analysis.energy = Array.from({ length: 600 }, (_, i) => i < 300 ? 0.12 : 0.96);
+    const map = generateBeatmap(analysis, 'hard');
+
+    const firstHalf = map.objects.filter((object) => object.time < 15000).length;
+    const secondHalf = map.objects.filter((object) => object.time >= 15000).length;
+
+    expect(secondHalf).toBeGreaterThan(firstHalf);
+  });
+
+  it('spaces sustain objects instead of stacking holds and slides back-to-back', () => {
+    const map = generateBeatmap(fakeAnalysis(), 'expert');
+
+    for (let i = 0; i < map.objects.length; i += 1) {
+      if (map.objects[i].type === 'tap') continue;
+      expect(map.objects[i - 1]?.type ?? 'tap').toBe('tap');
+      expect(map.objects[i - 2]?.type ?? 'tap').toBe('tap');
+    }
+  });
 });
 
 function durationMs(seconds: number) {
