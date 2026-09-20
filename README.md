@@ -6,7 +6,7 @@
 
 BeatForge is a browser-first rhythm game that analyzes a user's own audio and automatically turns it into playable rhythm charts.
 
-The project is currently in the **v0.4.0 series** and is playable on desktop and mobile through GitHub Pages. v0.3 expands BeatForge into a multi-mode rhythm platform and introduces a phrase-aware beatmap generator.
+The project is currently in the **v0.4.1 series** and is playable on desktop and mobile through GitHub Pages. v0.4 adds section-level tempo-map analysis, tempo-aware beat generation, and a substantial Hold / sustain reliability pass.
 
 ## Highlights
 
@@ -167,7 +167,10 @@ v0.4 also tightens long-note generation and judgment:
 - FORGE generation reserves the sustain span plus a short recovery gap, preventing impossible notes from appearing inside the same long press;
 - the validator shortens an overlapping sustain when enough room remains;
 - if the remaining sustain would be too short to be meaningful, it is downgraded to a Tap;
-- Pointer and Lane engines use a short release-grace window so brief input jitter does not immediately break a long note.
+- Pointer and Lane engines use a short release-grace window so brief input jitter does not immediately break a long note;
+- active Lane Hold notes keep their remaining body visible after the head is hit;
+- active Holds show progress, remaining time, `RELEASE` near the tail, and `BROKEN` when the sustain has already failed;
+- FORGE Hold notes show their duration before the hit and a circular sustain-progress indicator while held.
 
 ## Beatmap Validator
 
@@ -272,14 +275,8 @@ Audio File / Direct Audio URL
  Master Timing Data
           |
           v
- Beatmap Generator
- Easy / Normal / Hard / Expert
-          |
-          v
- Beatmap Validator
-          |
-          v
  Phrase-aware Beatmap Generator
+ Easy / Normal / Hard / Expert
           |
           +--> beat strength / phrase energy
           +--> spectral weighting
@@ -328,7 +325,11 @@ Current test coverage includes:
 - beatmap generation
 - deterministic difficulty generation
 - audio analysis with the built-in demo WAV
-- Beatmap Validator repair / removal behavior
+- 120 → 160 BPM section-change tempo-map detection
+- Low / Mid / High frequency-band separation
+- mode-specific beatmap playability rules
+- generated sustain spacing and minimum Hold duration
+- Beatmap Validator sustain-overlap repair / removal behavior
 
 ## Current limitations
 
@@ -348,7 +349,6 @@ Planned / likely next improvements include:
 
 - Combo Break / Miss-specific feedback
 - mode-specific beatmap transformations instead of sharing one timing-object list across every mode
-- richer Hold and Slide feedback
 - interactive timing calibration
 - true chord authoring for 4K
 - continuous tempo-curve tracking for accelerando / ritardando
