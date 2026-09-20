@@ -2,6 +2,8 @@
 
 **Turn Music Into Play.**
 
+🎮 **Live:** https://a24dc523.github.io/BeatForge/
+
 BeatForge is a browser-first rhythm game that analyzes a user's own audio and automatically turns it into four playable beatmaps.
 
 ## Current playable release
