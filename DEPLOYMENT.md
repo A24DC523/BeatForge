@@ -4,7 +4,7 @@ BeatForge is a static Vite application. No backend, database, secret, or paid AP
 
 ## Vercel
 
-1. Import `jacksin2031/BeatForge` into Vercel.
+1. Import `A24DC523/BeatForge` into Vercel.
 2. Keep the detected framework as **Vite**.
 3. Build command: `npm run build`
 4. Output directory: `dist`
