@@ -346,9 +346,15 @@ function detectPeaks(onset: number[], framesPerSecond: number) {
 
   for (let i = 1; i < onset.length - 1; i += 1) {
     const value = onset[i];
-    if (value < threshold || value < onset[i - 1] || value < onset[i + 1]) continue;
+    const left = onset[i - 1] ?? 0;
+    const right = onset[i + 1] ?? 0;
+    if (value < threshold || value < left || value < right) continue;
 
-    const time = i / framesPerSecond;
+    const denominator = left - 2 * value + right;
+    const offset = Math.abs(denominator) > 1e-9
+      ? clamp(0.5 * (left - right) / denominator, -0.5, 0.5)
+      : 0;
+    const time = (i + offset) / framesPerSecond;
     if (time - lastTime < 0.09) continue;
     peaks.push(time);
     lastTime = time;
@@ -357,12 +363,42 @@ function detectPeaks(onset: number[], framesPerSecond: number) {
   return peaks;
 }
 
+function refineBpmFromPeaks(peaks: number[], coarseBpm: number) {
+  if (peaks.length < 4) return coarseBpm;
+  const targetPeriod = 60 / coarseBpm;
+  const intervals: number[] = [];
+
+  for (let i = 1; i < peaks.length; i += 1) {
+    for (let back = 1; back <= 3 && i - back >= 0; back += 1) {
+      const interval = peaks[i] - peaks[i - back];
+      if (interval < targetPeriod * 0.72) continue;
+      if (interval > targetPeriod * 1.28) break;
+      intervals.push(interval);
+      break;
+    }
+  }
+
+  if (intervals.length < 4) return coarseBpm;
+  intervals.sort((a, b) => a - b);
+  const trim = Math.floor(intervals.length * 0.12);
+  const stable = intervals.slice(trim, Math.max(trim + 1, intervals.length - trim));
+  const average = stable.reduce((sum, value) => sum + value, 0) / stable.length;
+  const refined = 60 / Math.max(average, 0.001);
+
+  if (Math.abs(refined - coarseBpm) > 5) return coarseBpm;
+  const rounded = Math.round(refined);
+  if (Math.abs(refined - rounded) <= 0.28) return rounded;
+  return Math.round(refined * 10) / 10;
+}
+
 export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioAnalysis> {
   const { energy, bands } = buildAudioEnvelopes(buffer);
   const rhythm = buildRhythmEnvelope(buffer);
   const framesPerSecond = rhythm.framesPerSecond;
   const onset = onsetEnvelope(rhythm.energy);
-  const bpm = estimateBpm(onset, framesPerSecond);
+  const peaks = detectPeaks(onset, framesPerSecond);
+  const coarseBpm = estimateBpm(onset, framesPerSecond);
+  const bpm = refineBpmFromPeaks(peaks, coarseBpm);
   const beatInterval = 60 / bpm;
   let beatOffset = estimateBeatOffset(onset, framesPerSecond, bpm);
 
@@ -388,7 +424,7 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioAnal
     beats,
     energy,
     bands,
-    peaks: detectPeaks(onset, framesPerSecond),
+    peaks,
     sampleRate: buffer.sampleRate,
   };
 }
