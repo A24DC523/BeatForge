@@ -185,7 +185,7 @@ export default function App() {
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const decoded = await decodeAudioFile(file);
-      setAnalysisStep('正在追蹤 BPM 與節拍');
+      setAnalysisStep('正在分析 BPM、節拍與 Low / Mid / High 頻段');
       await new Promise<void>((resolve) => setTimeout(resolve, 80));
 
       const title = cleanTitle(file.name);
@@ -347,7 +347,7 @@ export default function App() {
             <div className="hero-copy">
               <div className="pill"><Sparkles size={15} />AUTO BEATMAP ENGINE</div>
               <h1>你的音樂，<br /><span>即刻變成遊戲。</span></h1>
-              <p>上傳歌曲，BeatForge 會在瀏覽器分析 BPM、Onset 與能量，自動生成 Easy 至 Expert 四個可玩的節奏譜面。</p>
+              <p>上傳歌曲，BeatForge 會在瀏覽器分析 BPM、Onset、能量與 Low / Mid / High 頻段，自動生成 Easy 至 Expert 四個可玩的節奏譜面。</p>
               <div className="hero-points">
                 <span><ShieldCheck size={16} />音訊留在你的裝置</span>
                 <span><Smartphone size={16} />手機 / 電腦雙操作</span>
@@ -419,7 +419,7 @@ export default function App() {
           <section className="feature-strip" aria-label="BeatForge 功能">
             <article>
               <span className="feature-icon"><Gauge size={22} /></span>
-              <div><strong>Beat Detection</strong><p>本機估算 BPM、拍點與節奏峰值。</p></div>
+              <div><strong>Spectrum Aware</strong><p>本機估算 BPM、拍點、Low / Mid / High 與節奏峰值。</p></div>
             </article>
             <article>
               <span className="feature-icon"><Sparkles size={22} /></span>
@@ -439,7 +439,7 @@ export default function App() {
             <div className="pipeline">
               <div><span>01</span><Music2 size={26} /><strong>Decode</strong><p>讀取你的音訊波形</p></div>
               <i />
-              <div><span>02</span><AudioLines size={26} /><strong>Analyze</strong><p>BPM / Onset / Energy / Phrases</p></div>
+              <div><span>02</span><AudioLines size={26} /><strong>Analyze</strong><p>BPM / Onset / Energy / Spectrum / Phrases</p></div>
               <i />
               <div><span>03</span><Sparkles size={26} /><strong>Forge</strong><p>建立段落感知多難度 Pattern</p></div>
               <i />
@@ -580,7 +580,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <span>BeatForge v0.3 · Turn Music Into Play</span>
+        <span>BeatForge v0.3.1 · Turn Music Into Play</span>
         <span>Local-first audio processing</span>
       </footer>
 
