@@ -6,7 +6,7 @@ BeatForge is a browser-first rhythm game that analyzes a user's own audio and au
 
 ## Current playable release
 
-The current `main` branch is a complete local-first web MVP:
+The current `main` branch is the playable **v0.2.0** local-first web release:
 
 - Upload MP3, WAV, M4A, AAC, OGG, or FLAC
 - Direct-audio URL import when the source permits browser CORS
@@ -18,6 +18,10 @@ The current `main` branch is a complete local-first web MVP:
 - Perfect / Great / Good / Miss judgments
 - Score, combo, accuracy, rank and results
 - Timing offset and volume settings
+- Web Audio device-latency estimation using `baseLatency` / `outputLatency`
+- Beatmap Validator with automatic repair for bounds, sustain length, duplicate timing and unsafe travel
+- Local best-score persistence per song and difficulty
+- Installable PWA shell with service-worker caching
 - Responsive desktop / phone UI
 - Built-in **Neon Pulse** demo generated entirely in the browser
 - No account and no audio upload to a BeatForge server
@@ -82,7 +86,7 @@ The current version is local-first:
 
 - no backend is required for gameplay;
 - song files are not uploaded by the application;
-- timing offset and volume are the only settings persisted in localStorage.
+- timing offset, volume and local best-score records are persisted in localStorage.
 
 ## Roadmap
 
@@ -90,4 +94,4 @@ Likely next steps include variable-BPM tracking, richer spectral analysis, beatm
 
 ## Development
 
-GitHub Actions verifies unit tests and the production TypeScript/Vite build on every push to `main`.
+GitHub Actions verifies unit tests and the production TypeScript/Vite build on every push to `main`, then uploads the generated `dist` directory as a build artifact.
