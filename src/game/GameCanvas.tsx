@@ -19,6 +19,14 @@ interface ActiveSustain {
   broken: boolean;
 }
 
+interface HitBurst {
+  x: number;
+  y: number;
+  judge: Exclude<Judge, 'miss'>;
+  at: number;
+  seed: number;
+}
+
 const EMPTY_SCORE: ScoreState = {
   score: 0,
   combo: 0,
@@ -79,11 +87,16 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
   const pointerDownRef = useRef(false);
   const keyDownRef = useRef(false);
   const lastJudgeRef = useRef<{ text: string; at: number } | null>(null);
+  const hitBurstsRef = useRef<HitBurst[]>([]);
+  const comboTimerRef = useRef<number | null>(null);
   const resultReportedRef = useRef(false);
   const [status, setStatus] = useState<GameStatus>('ready');
   const [score, setScore] = useState<ScoreState>(() => ({ ...EMPTY_SCORE, totalObjects: beatmap.objects.length }));
   const [progress, setProgress] = useState(0);
   const [currentJudge, setCurrentJudge] = useState('');
+  const [judgePulseKey, setJudgePulseKey] = useState(0);
+  const [comboPulseKey, setComboPulseKey] = useState(0);
+  const [comboMilestone, setComboMilestone] = useState<number | null>(null);
   const [isTouch, setIsTouch] = useState(false);
 
   const durationMs = beatmap.duration * 1000;
@@ -95,11 +108,35 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
     pointerDownRef.current = false;
     keyDownRef.current = false;
     lastJudgeRef.current = null;
+    hitBurstsRef.current = [];
+    if (comboTimerRef.current !== null) {
+      window.clearTimeout(comboTimerRef.current);
+      comboTimerRef.current = null;
+    }
     resultReportedRef.current = false;
+    setComboMilestone(null);
     cursorRef.current = { x: 0.5, y: 0.5 };
   }, []);
 
-  const applyJudge = useCallback((judge: Judge) => {
+  const triggerHitFeedback = useCallback((
+    judge: Exclude<Judge, 'miss'>,
+    point: { x: number; y: number },
+  ) => {
+    hitBurstsRef.current.push({
+      x: point.x,
+      y: point.y,
+      judge,
+      at: performance.now(),
+      seed: performance.now() + point.x * 997 + point.y * 313,
+    });
+    if (hitBurstsRef.current.length > 18) hitBurstsRef.current.splice(0, hitBurstsRef.current.length - 18);
+
+    if (isTouch && 'vibrate' in navigator) {
+      navigator.vibrate(judge === 'perfect' ? 12 : judge === 'great' ? 8 : 5);
+    }
+  }, [isTouch]);
+
+  const applyJudge = useCallback((judge: Judge, feedbackPoint?: { x: number; y: number }) => {
     setScore((previous) => {
       const next = { ...previous };
       next.judged += 1;
@@ -123,9 +160,11 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
       return next;
     });
 
+    if (judge !== 'miss' && feedbackPoint) triggerHitFeedback(judge, feedbackPoint);
     lastJudgeRef.current = { text: judge.toUpperCase(), at: performance.now() };
+    setJudgePulseKey((value) => value + 1);
     setCurrentJudge(judge.toUpperCase());
-  }, []);
+  }, [triggerHitFeedback]);
 
   const markMisses = useCallback((nowMs: number) => {
     const windowMs = beatmap.hitWindowMs;
@@ -148,7 +187,10 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
 
       engagedRef.current.delete(id);
       judgedRef.current.add(id);
-      applyJudge(active.broken ? 'miss' : active.judge);
+      const feedbackPoint = active.object.type === 'slide'
+        ? { x: active.object.endX ?? active.object.x, y: active.object.endY ?? active.object.y }
+        : { x: active.object.x, y: active.object.y };
+      applyJudge(active.broken ? 'miss' : active.judge, feedbackPoint);
     }
   }, [applyJudge]);
 
@@ -206,13 +248,15 @@ export function GameCanvas({ beatmap, audioUrl, offsetMs, volume, onExit, onFini
 
     if (best.type === 'tap') {
       judgedRef.current.add(best.id);
-      applyJudge(judge);
+      applyJudge(judge, { x: best.x, y: best.y });
     } else {
       engagedRef.current.set(best.id, { object: best, judge, broken: false });
+      triggerHitFeedback(judge, { x: best.x, y: best.y });
       lastJudgeRef.current = { text: 'HOLD', at: performance.now() };
+      setJudgePulseKey((value) => value + 1);
       setCurrentJudge('HOLD');
     }
-  }, [applyJudge, beatmap.hitWindowMs, beatmap.objects, offsetMs, status]);
+  }, [applyJudge, beatmap.hitWindowMs, beatmap.objects, offsetMs, status, triggerHitFeedback]);
 
   const draw = useCallback((nowMs: number) => {
     const canvas = canvasRef.current;
