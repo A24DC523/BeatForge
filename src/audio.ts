@@ -387,7 +387,7 @@ function refineBpmFromPeaks(peaks: number[], coarseBpm: number) {
 
   if (Math.abs(refined - coarseBpm) > 5) return coarseBpm;
   const rounded = Math.round(refined);
-  if (Math.abs(refined - rounded) <= 0.28) return rounded;
+  if (Math.abs(refined - rounded) <= 0.35) return rounded;
   return Math.round(refined * 10) / 10;
 }
 
