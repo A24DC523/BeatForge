@@ -29,6 +29,14 @@ interface HitBurst {
   seed: number;
 }
 
+interface JudgePopup {
+  x: number;
+  y: number;
+  label: string;
+  points: number | null;
+  at: number;
+}
+
 const EMPTY_SCORE: ScoreState = {
   score: 0,
   combo: 0,
@@ -96,8 +104,8 @@ export function GameCanvas({
   const cursorRef = useRef({ x: 0.5, y: 0.5 });
   const pointerDownRef = useRef(false);
   const keyDownRef = useRef(false);
-  const lastJudgeRef = useRef<{ text: string; at: number } | null>(null);
   const hitBurstsRef = useRef<HitBurst[]>([]);
+  const judgePopupsRef = useRef<JudgePopup[]>([]);
   const comboTimerRef = useRef<number | null>(null);
   const resultReportedRef = useRef(false);
   const scoreRef = useRef<ScoreState>({ ...EMPTY_SCORE, totalObjects: beatmap.objects.length });
@@ -105,8 +113,6 @@ export function GameCanvas({
   const [status, setStatus] = useState<GameStatus>('ready');
   const [score, setScore] = useState<ScoreState>(() => ({ ...EMPTY_SCORE, totalObjects: beatmap.objects.length }));
   const [progress, setProgress] = useState(0);
-  const [currentJudge, setCurrentJudge] = useState('');
-  const [judgePulseKey, setJudgePulseKey] = useState(0);
   const [comboPulseKey, setComboPulseKey] = useState(0);
   const [comboMilestone, setComboMilestone] = useState<number | null>(null);
   const [isTouch, setIsTouch] = useState(false);
@@ -119,8 +125,8 @@ export function GameCanvas({
     missCursorRef.current = 0;
     pointerDownRef.current = false;
     keyDownRef.current = false;
-    lastJudgeRef.current = null;
     hitBurstsRef.current = [];
+    judgePopupsRef.current = [];
     if (comboTimerRef.current !== null) {
       window.clearTimeout(comboTimerRef.current);
       comboTimerRef.current = null;
@@ -174,17 +180,27 @@ export function GameCanvas({
       next.good * judgeWeight('good');
     next.accuracy = next.judged > 0 ? (weighted / next.judged) * 100 : 100;
 
+    const awardedPoints = Math.max(0, next.score - previous.score);
     scoreRef.current = next;
     setScore(next);
+
+    if (feedbackPoint) {
+      judgePopupsRef.current.push({
+        x: feedbackPoint.x,
+        y: feedbackPoint.y,
+        label: judge.toUpperCase(),
+        points: awardedPoints,
+        at: performance.now(),
+      });
+      if (judgePopupsRef.current.length > 20) {
+        judgePopupsRef.current.splice(0, judgePopupsRef.current.length - 20);
+      }
+    }
 
     if (judge !== 'miss') {
       if (feedbackPoint) triggerHitFeedback(judge, feedbackPoint);
       hitSoundRef.current?.play(soundKind ?? judge, next.combo);
     }
-
-    lastJudgeRef.current = { text: judge.toUpperCase(), at: performance.now() };
-    setJudgePulseKey((value) => value + 1);
-    setCurrentJudge(judge.toUpperCase());
   }, [triggerHitFeedback]);
 
   const markMisses = useCallback((nowMs: number) => {
@@ -278,9 +294,13 @@ export function GameCanvas({
       engagedRef.current.set(best.id, { object: best, judge, broken: false });
       triggerHitFeedback(judge, { x: best.x, y: best.y });
       hitSoundRef.current?.play('hold-start', scoreRef.current.combo);
-      lastJudgeRef.current = { text: 'HOLD', at: performance.now() };
-      setJudgePulseKey((value) => value + 1);
-      setCurrentJudge('HOLD');
+      judgePopupsRef.current.push({
+        x: best.x,
+        y: best.y,
+        label: best.type === 'slide' ? 'SLIDE' : 'HOLD',
+        points: null,
+        at: performance.now(),
+      });
     }
   }, [applyJudge, beatmap.hitWindowMs, beatmap.objects, offsetMs, status, triggerHitFeedback]);
 
@@ -309,6 +329,7 @@ export function GameCanvas({
 
     const effectNow = performance.now();
     hitBurstsRef.current = hitBurstsRef.current.filter((burst) => effectNow - burst.at < 460);
+    judgePopupsRef.current = judgePopupsRef.current.filter((popup) => effectNow - popup.at < 680);
 
     let shakeX = 0;
     let shakeY = 0;
@@ -485,6 +506,46 @@ export function GameCanvas({
       ctx.restore();
     }
 
+    for (const popup of judgePopupsRef.current) {
+      const age = effectNow - popup.at;
+      const progress = Math.max(0, Math.min(1, age / 680));
+      const fade = Math.max(0, 1 - Math.pow(progress, 1.65));
+      const pop = progress < 0.18
+        ? 0.76 + (progress / 0.18) * 0.34
+        : 1.1 - ((progress - 0.18) / 0.82) * 0.1;
+      const x = Math.max(72, Math.min(w - 72, popup.x * w));
+      const y = Math.max(58, Math.min(h - 48, popup.y * h - 44 - progress * 26));
+      const color =
+        popup.label === 'PERFECT' ? '#8ff3dc' :
+        popup.label === 'GREAT' ? '#88dcff' :
+        popup.label === 'GOOD' ? '#ffd784' :
+        popup.label === 'MISS' ? '#ff7974' :
+        '#d2cfff';
+
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.translate(x, y);
+      ctx.scale(pop, pop);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,.72)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 3;
+
+      ctx.fillStyle = color;
+      ctx.font = `900 ${Math.max(14, Math.min(22, unit * 0.031))}px ui-sans-serif, system-ui`;
+      ctx.fillText(popup.label, 0, 0);
+
+      if (popup.points !== null) {
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = popup.points > 0 ? '#ffffff' : 'rgba(255,255,255,.72)';
+        ctx.font = `800 ${Math.max(11, Math.min(16, unit * 0.022))}px ui-sans-serif, system-ui`;
+        ctx.fillText(`+${popup.points.toLocaleString()}`, 0, 21);
+      }
+
+      ctx.restore();
+    }
+
     if (!isTouch) {
       const cursor = cursorRef.current;
       const cx = cursor.x * w;
@@ -519,13 +580,8 @@ export function GameCanvas({
 
     draw(nowMs);
 
-    if (lastJudgeRef.current && performance.now() - lastJudgeRef.current.at > 550 && currentJudge) {
-      setCurrentJudge('');
-      lastJudgeRef.current = null;
-    }
-
     rafRef.current = requestAnimationFrame(frame);
-  }, [currentJudge, draw, durationMs, finalizeSustains, markMisses, offsetMs, status, validateSustains]);
+  }, [draw, durationMs, finalizeSustains, markMisses, offsetMs, status, validateSustains]);
 
   useEffect(() => {
     rafRef.current = requestAnimationFrame(frame);
@@ -667,7 +723,6 @@ export function GameCanvas({
     scoreRef.current = initialScore;
     setScore(initialScore);
     setProgress(0);
-    setCurrentJudge('');
     audio.currentTime = 0;
     rootRef.current?.focus();
     try {
@@ -768,8 +823,6 @@ export function GameCanvas({
           <em>COMBO</em>
         </div>
       )}
-      {currentJudge && <div key={judgePulseKey} className={`judge-flash judge-${currentJudge.toLowerCase()}`}>{currentJudge}</div>}
-
       {status === 'ready' && (
         <div className="game-overlay">
           <div className="game-modal">
