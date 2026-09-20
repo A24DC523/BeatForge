@@ -32,5 +32,41 @@ describe('BeatForge audio analysis', () => {
     expect(result.bpm).toBe(128);
     expect(result.beats.length).toBeGreaterThan(40);
     expect(result.peaks.length).toBeGreaterThan(40);
+    expect(result.bands?.low.length).toBe(result.energy.length);
+    expect(result.bands?.mid.length).toBe(result.energy.length);
+    expect(result.bands?.high.length).toBe(result.energy.length);
+  });
+
+  it('separates low-frequency and high-frequency tones into different bands', async () => {
+    const makeTone = (frequency: number) => {
+      const sampleRate = 44100;
+      const duration = 2;
+      const sampleCount = sampleRate * duration;
+      const channel = new Float32Array(sampleCount);
+
+      for (let i = 0; i < sampleCount; i += 1) {
+        channel[i] = Math.sin((Math.PI * 2 * frequency * i) / sampleRate) * 0.8;
+      }
+
+      return {
+        numberOfChannels: 1,
+        length: sampleCount,
+        sampleRate,
+        duration,
+        getChannelData: (index: number) => {
+          if (index !== 0) throw new Error('Unexpected channel');
+          return channel;
+        },
+      } as unknown as AudioBuffer;
+    };
+
+    const lowTone = await analyzeAudioBuffer(makeTone(100));
+    const highTone = await analyzeAudioBuffer(makeTone(4000));
+
+    const average = (values: number[] | undefined) =>
+      (values ?? []).reduce((sum, value) => sum + value, 0) / Math.max(values?.length ?? 0, 1);
+
+    expect(average(lowTone.bands?.low)).toBeGreaterThan(average(lowTone.bands?.high));
+    expect(average(highTone.bands?.high)).toBeGreaterThan(average(highTone.bands?.low));
   });
 });
