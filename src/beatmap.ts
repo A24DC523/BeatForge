@@ -99,8 +99,15 @@ function bandAt(analysis: AudioAnalysis, time: number) {
   };
 }
 
+function beatIntervalAt(analysis: AudioAnalysis, time: number) {
+  const segment = analysis.tempoMap?.find(
+    (item) => time >= item.start && time < item.end,
+  );
+  return segment?.beatInterval ?? analysis.beatInterval;
+}
+
 function phraseEnergyAt(analysis: AudioAnalysis, time: number) {
-  const beat = Math.max(analysis.beatInterval, 0.1);
+  const beat = Math.max(beatIntervalAt(analysis, time), 0.1);
   const radius = beat * 4;
   const samples = 9;
   let sum = 0;
@@ -134,7 +141,7 @@ function nearestBeatIndex(beats: number[], time: number) {
 }
 
 function quantizePeak(analysis: AudioAnalysis, time: number, difficulty: DifficultyId) {
-  const beat = analysis.beatInterval;
+  const beat = beatIntervalAt(analysis, time);
   const subdivisions =
     difficulty === 'expert' ? 4 :
     difficulty === 'hard' ? 2 :
@@ -187,9 +194,9 @@ function pushCandidate(
 
 function candidateTimes(analysis: AudioAnalysis, difficulty: DifficultyId) {
   const candidates: Candidate[] = [];
-  const beat = analysis.beatInterval;
 
   analysis.beats.forEach((time, index) => {
+    const beat = beatIntervalAt(analysis, time);
     const measureBeat = index % 4;
     const downbeat = measureBeat === 0;
     const backbeat = measureBeat === 2;
@@ -224,7 +231,7 @@ function candidateTimes(analysis: AudioAnalysis, difficulty: DifficultyId) {
       const beatIndex = nearestBeatIndex(analysis.beats, time);
       const nearest = analysis.beats[beatIndex] ?? time;
       const distance = Math.abs(nearest - time);
-      const duplicateRadius = Math.min(analysis.beatInterval * 0.13, 0.065);
+      const duplicateRadius = Math.min(beatIntervalAt(analysis, time) * 0.13, 0.065);
       if (distance < duplicateRadius) continue;
 
       pushCandidate(
@@ -367,7 +374,7 @@ function sustainDurationMs(
   difficulty: DifficultyId,
   type: 'hold' | 'slide',
 ) {
-  const beatMs = analysis.beatInterval * 1000;
+  const beatMs = beatIntervalAt(analysis, candidate.time) * 1000;
   const minimum =
     difficulty === 'easy' ? 520 :
     difficulty === 'normal' ? 470 :
@@ -391,8 +398,8 @@ function sustainDurationMs(
   return Math.round(beatMs * Math.min(beats, 2));
 }
 
-function sustainRecoveryMs(analysis: AudioAnalysis, difficulty: DifficultyId) {
-  const beatMs = analysis.beatInterval * 1000;
+function sustainRecoveryMs(analysis: AudioAnalysis, difficulty: DifficultyId, time: number) {
+  const beatMs = beatIntervalAt(analysis, time) * 1000;
   const cap =
     difficulty === 'easy' ? 170 :
     difficulty === 'normal' ? 135 :
@@ -487,7 +494,7 @@ export function generateBeatmap(
 
     if (type !== 'tap') {
       object.duration = sustainDurationMs(candidate, analysis, difficulty, type);
-      occupiedUntil = timeMs + object.duration + sustainRecoveryMs(analysis, difficulty);
+      occupiedUntil = timeMs + object.duration + sustainRecoveryMs(analysis, difficulty, candidate.time);
 
       if (type === 'slide') {
         const end = positionFor(
