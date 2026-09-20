@@ -57,6 +57,9 @@ interface Candidate {
   weight: number;
   gridStrength: number;
   phraseEnergy: number;
+  bandLow: number;
+  bandMid: number;
+  bandHigh: number;
   source: 'beat' | 'subdivision' | 'peak';
   beatIndex: number;
 }
@@ -76,6 +79,24 @@ function energyAt(analysis: AudioAnalysis, time: number) {
     Math.max(0, Math.round((time / Math.max(analysis.duration, 0.001)) * analysis.energy.length)),
   );
   return analysis.energy[index] ?? 0.5;
+}
+
+function bandAt(analysis: AudioAnalysis, time: number) {
+  const bands = analysis.bands;
+  if (!bands || bands.low.length === 0) {
+    const fallback = energyAt(analysis, time);
+    return { low: fallback, mid: fallback, high: fallback };
+  }
+
+  const index = Math.min(
+    bands.low.length - 1,
+    Math.max(0, Math.round((time / Math.max(analysis.duration, 0.001)) * bands.low.length)),
+  );
+  return {
+    low: bands.low[index] ?? 0,
+    mid: bands.mid[index] ?? 0,
+    high: bands.high[index] ?? 0,
+  };
 }
 
 function phraseEnergyAt(analysis: AudioAnalysis, time: number) {
@@ -143,13 +164,24 @@ function pushCandidate(
 
   const localEnergy = energyAt(analysis, time);
   const phraseEnergy = phraseEnergyAt(analysis, time);
+  const bands = bandAt(analysis, time);
+  const spectralBoost =
+    source === 'beat'
+      ? bands.low * 0.22 + bands.mid * 0.08
+      : source === 'subdivision'
+        ? bands.high * 0.19 + bands.mid * 0.09
+        : bands.high * 0.14 + bands.mid * 0.13 + bands.low * 0.05;
+
   target.push({
     time,
     source,
     beatIndex,
     gridStrength,
     phraseEnergy,
-    weight: baseWeight + localEnergy * 0.36 + phraseEnergy * 0.22,
+    bandLow: bands.low,
+    bandMid: bands.mid,
+    bandHigh: bands.high,
+    weight: baseWeight + localEnergy * 0.28 + phraseEnergy * 0.18 + spectralBoost,
   });
 }
 
@@ -319,8 +351,13 @@ function sustainType(
   if (candidate.gridStrength < 0.72 || candidate.source === 'subdivision') return 'tap' as const;
 
   const roll = seeded(timeMs * 0.73 + candidate.beatIndex * 31);
-  if (roll < preset.slideChance * (0.75 + candidate.phraseEnergy * 0.35)) return 'slide' as const;
-  if (roll < preset.slideChance + preset.holdChance * (0.72 + candidate.phraseEnergy * 0.28)) return 'hold' as const;
+  const transientBias = clamp(candidate.bandHigh - candidate.bandLow, -0.5, 0.5);
+  const bodyBias = clamp(candidate.bandMid + candidate.bandLow - candidate.bandHigh, -0.5, 0.8);
+  const slideChance = preset.slideChance * (0.72 + candidate.phraseEnergy * 0.28 + Math.max(0, transientBias) * 0.4);
+  const holdChance = preset.holdChance * (0.68 + candidate.phraseEnergy * 0.25 + Math.max(0, bodyBias) * 0.24);
+
+  if (roll < slideChance) return 'slide' as const;
+  if (roll < slideChance + holdChance) return 'hold' as const;
   return 'tap' as const;
 }
 
@@ -401,6 +438,9 @@ export function generateBeatmap(
       x,
       y,
       weight: candidate.weight,
+      bandLow: candidate.bandLow,
+      bandMid: candidate.bandMid,
+      bandHigh: candidate.bandHigh,
     };
 
     if (type !== 'tap') {
