@@ -343,25 +343,71 @@ export function LaneGameCanvas({
         y = topY + (hitY - topY) * travel;
       }
 
-      if (isHold && !active) {
-        const endTravel = 1 - Math.max(
-          0,
-          Math.min(1, (object.time + (object.duration ?? 0) - nowMs) / beatmap.approachMs),
-        );
-        const endY = topY + (hitY - topY) * endTravel;
-        ctx.strokeStyle = object.type === 'slide' ? 'rgba(139,124,255,.62)' : 'rgba(69,214,180,.62)';
-        ctx.lineWidth = Math.max(8, noteWidth * 0.3);
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(centerX, Math.min(y, endY));
-        ctx.lineTo(centerX, Math.max(y, endY));
-        ctx.stroke();
-      }
-
       const color =
         object.type === 'slide' ? '#9b8cff' :
         object.type === 'hold' ? '#52dfbd' :
         '#ff669f';
+
+      if (isHold) {
+        const endTime = object.time + (object.duration ?? 0);
+        const endTravel = 1 - Math.max(
+          0,
+          Math.min(1, (endTime - nowMs) / beatmap.approachMs),
+        );
+        const endY = topY + (hitY - topY) * endTravel;
+        const bodyStartY = active ? hitY : y;
+        const bodyEndY = Math.min(hitY, endY);
+        const releaseGraceMs = Math.max(50, Math.min(100, beatmap.hitWindowMs * 0.6));
+        const nearRelease = Boolean(active) && endTime - nowMs <= releaseGraceMs * 1.5;
+
+        ctx.strokeStyle = active?.broken
+          ? 'rgba(255,111,104,.74)'
+          : object.type === 'slide'
+            ? 'rgba(139,124,255,.68)'
+            : 'rgba(82,223,189,.68)';
+        ctx.lineWidth = Math.max(8, noteWidth * 0.3);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(centerX, bodyStartY);
+        ctx.lineTo(centerX, bodyEndY);
+        ctx.stroke();
+
+        ctx.fillStyle = active?.broken ? '#ff6f68' : nearRelease ? '#ffffff' : color;
+        ctx.shadowColor = active?.broken ? '#ff6f68' : color;
+        ctx.shadowBlur = nearRelease ? 22 : 12;
+        ctx.beginPath();
+        ctx.roundRect(centerX - noteWidth * 0.34, bodyEndY - 8, noteWidth * 0.68, 16, 7);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        if (active) {
+          const remaining = Math.max(0, endTime - nowMs);
+          const progress = 1 - remaining / Math.max(object.duration ?? 1, 1);
+          const barWidth = noteWidth * 0.72;
+          const barX = centerX - barWidth / 2;
+          const barY = hitY - 31;
+
+          ctx.fillStyle = 'rgba(255,255,255,.12)';
+          ctx.beginPath();
+          ctx.roundRect(barX, barY, barWidth, 5, 3);
+          ctx.fill();
+
+          ctx.fillStyle = active.broken ? '#ff6f68' : nearRelease ? '#ffffff' : color;
+          ctx.beginPath();
+          ctx.roundRect(barX, barY, Math.max(3, barWidth * Math.max(0, Math.min(1, progress))), 5, 3);
+          ctx.fill();
+
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = active.broken ? '#ff8e89' : nearRelease ? '#ffffff' : 'rgba(255,255,255,.84)';
+          ctx.font = `800 ${Math.max(10, Math.min(13, laneWidth * 0.07))}px ui-sans-serif, system-ui`;
+          ctx.fillText(
+            active.broken ? 'BROKEN' : nearRelease ? 'RELEASE' : `${(remaining / 1000).toFixed(1)}s`,
+            centerX,
+            hitY - 44,
+          );
+        }
+      }
 
       ctx.fillStyle = active?.broken ? '#ff6f68' : color;
       ctx.shadowColor = color;
