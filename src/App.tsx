@@ -434,9 +434,9 @@ export default function App() {
             <div className="pipeline">
               <div><span>01</span><Music2 size={26} /><strong>Decode</strong><p>讀取你的音訊波形</p></div>
               <i />
-              <div><span>02</span><AudioLines size={26} /><strong>Analyze</strong><p>BPM / Onset / Energy</p></div>
+              <div><span>02</span><AudioLines size={26} /><strong>Analyze</strong><p>BPM / Onset / Energy / Phrases</p></div>
               <i />
-              <div><span>03</span><Sparkles size={26} /><strong>Forge</strong><p>建立多難度 Pattern</p></div>
+              <div><span>03</span><Sparkles size={26} /><strong>Forge</strong><p>建立段落感知多難度 Pattern</p></div>
               <i />
               <div><span>04</span><Gamepad2 size={26} /><strong>Play</strong><p>即時開始挑戰</p></div>
             </div>
@@ -575,7 +575,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <span>BeatForge v0.2 · Turn Music Into Play</span>
+        <span>BeatForge v0.3 · Turn Music Into Play</span>
         <span>Local-first audio processing</span>
       </footer>
 
