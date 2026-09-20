@@ -10,7 +10,12 @@ createRoot(document.getElementById('root')!).render(
 );
 
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+const isLocalDevelopment =
+  location.hostname === 'localhost' ||
+  location.hostname === '127.0.0.1' ||
+  location.hostname === '[::1]';
+
+if ('serviceWorker' in navigator && !isLocalDevelopment) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {
       // Offline support is optional and must not block gameplay.
