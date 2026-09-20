@@ -6,14 +6,15 @@
 
 BeatForge is a browser-first rhythm game that analyzes a user's own audio and automatically turns it into playable rhythm charts.
 
-The project is currently in the **v0.2.0 series** and is already playable on desktop and mobile through GitHub Pages.
+The project is currently in the **v0.3.0 series** and is playable on desktop and mobile through GitHub Pages. v0.3 expands BeatForge into a multi-mode rhythm platform and introduces a phrase-aware beatmap generator.
 
 ## Highlights
 
 - Upload your own MP3, WAV, M4A, AAC, OGG, or FLAC
 - Direct-audio URL import when the source permits browser CORS
 - Browser-side BPM, beat, onset, and energy analysis
-- Automatic Easy / Normal / Hard / Expert beatmap generation
+- Phrase-aware Easy / Normal / Hard / Expert beatmap generation
+- Six gameplay modes: Forge, 4K Lanes, 2K Split, 1K Pulse, Drum, and Catch
 - Tap, Hold, and Slide objects
 - Desktop controls: mouse cursor + Z/X, with mouse click support
 - Mobile controls: tap, hold, and drag
@@ -124,17 +125,31 @@ BeatForge analyzes the decoded song in-browser and builds timing data from:
 - BPM estimation
 - beat-phase estimation
 - peak detection
+- local phrase energy across multi-beat windows
+- beat-strength / downbeat weighting
 
-The generator then creates four difficulty variants:
+The v0.3 generator does more than randomly thin a master timing list. It now applies:
 
-| Difficulty | Style |
+- **strong / weak beat weighting** so downbeats and backbeats are more likely to define the chart skeleton;
+- **phrase-aware density** so energetic sections naturally become busier while quieter sections leave more breathing room;
+- **peak quantization** that snaps suitable transients toward the musical grid without forcing every transient onto a beat;
+- **local density budgets** to prevent short sections from turning into unreadable note spam;
+- **pattern continuity** so pointer-mode positions form short deterministic motion phrases instead of unrelated jumps;
+- **anti-repetition rules** that reduce immediate 180-degree reversals on easier charts;
+- **sustain pacing** that keeps Hold / Slide objects from stacking back-to-back;
+- **difficulty-specific subdivisions**: higher difficulties may use half-beats and quarter-beats while Easy focuses on the rhythmic skeleton;
+- **burst-aware star rating** using local density and sustain ratio in addition to BPM and average note density.
+
+The generator creates four difficulty variants:
+
+| Difficulty | Generator behaviour |
 | --- | --- |
-| Easy | Lower density, wider spacing, longer approach time |
-| Normal | Balanced default chart |
-| Hard | Higher density and tighter spacing |
-| Expert | Highest current density and shortest timing windows |
+| Easy | Strong beats and phrase skeleton, low local density, wide spacing |
+| Normal | Main beat grid, accents and moderate phrase variation |
+| Hard | Half-beat subdivisions, peak tracking and energetic-section acceleration |
+| Expert | Quarter-beat options, denser peak tracking and the highest local burst budget |
 
-Generated charts are deterministic for the same analysis input.
+Generated charts remain deterministic for the same analysis input.
 
 ## Beatmap Validator
 
@@ -162,20 +177,18 @@ Default timing windows vary by difficulty, with tighter windows on harder maps.
 
 The settings panel also includes an optional Web Audio device-latency estimate based on `baseLatency` and `outputLatency`. This is only a starting estimate; players can still fine-tune the offset manually.
 
-## Controls
+## Gameplay modes
 
-### Desktop
+| Mode | Desktop | Mobile | Core idea |
+| --- | --- | --- | --- |
+| **FORGE** | Mouse + Z / X | Tap / hold / drag | Free-position Pointer gameplay with Tap, Hold and Slide |
+| **4K LANES** | D / F / J / K | Tap four lanes | Four-key falling-note lane mode |
+| **2K SPLIT** | F / J | Tap left / right | Fast two-lane alternating rhythm |
+| **1K PULSE** | Space | Tap anywhere | Pure timing mode with no aiming |
+| **DRUM** | F / J = Don, D / K = Ka | Tap left / right drum side | Red / blue Don-Ka rhythm recognition |
+| **CATCH** | Left / Right or A / D | Drag horizontally | Move the catcher and intercept notes at the judgment line |
 
-- Move the mouse to aim
-- Press **Z** or **X** to hit
-- Mouse click is also supported
-- Hold Z / X or the pointer for Hold / Slide objects
-
-### Mobile
-
-- Tap notes directly
-- Hold Hold objects
-- Drag along Slide paths
+Each mode shares the same song analysis, difficulty system, scoring model, Hit Sound engine and result screen, while keeping separate local best-score records.
 
 ## Local-first privacy
 
@@ -245,13 +258,25 @@ Audio File / Direct Audio URL
  Beatmap Validator
           |
           v
- React + Canvas Game Engine
+ Phrase-aware Beatmap Generator
           |
-          +--> Judgment / scoring
-          +--> Hit particles / screen punch
-          +--> Combo feedback
-          +--> Web Audio hit sounds
-          +--> Local best scores
+          +--> beat strength / phrase energy
+          +--> peak quantization
+          +--> local density budget
+          +--> pattern continuity
+          |
+          v
+ Beatmap Validator
+          |
+          v
+ Multi-mode React + Canvas Engines
+          |
+          +--> Forge Pointer
+          +--> 4K / 2K / 1K Lane
+          +--> Drum
+          +--> Catch
+          +--> shared scoring / Hit Sound
+          +--> local best scores
 ```
 
 ## PWA
@@ -290,8 +315,8 @@ The current version still has several known limitations:
 - audio analysis assumes mostly constant tempo
 - variable-BPM / tempo-section tracking is not implemented yet
 - direct URL import depends on browser CORS permissions
-- gameplay currently uses a single active pointer / key state rather than full multi-touch chord tracking
-- generated charts intentionally avoid simultaneous chord objects
+- Forge Pointer mode still uses a single active pointer / key sustain state
+- generated charts intentionally avoid simultaneous chord objects; true chord authoring is not implemented yet
 - best-score identity currently uses title + BPM + duration + difficulty rather than a full audio fingerprint
 - device-latency estimation is approximate and is not a full tap-calibration test
 
@@ -300,11 +325,12 @@ The current version still has several known limitations:
 Planned / likely next improvements include:
 
 - Combo Break / Miss-specific feedback
+- mode-specific beatmap transformations instead of sharing one timing-object list across every mode
 - richer Hold and Slide feedback
 - interactive timing calibration
-- true multi-touch and chord support
+- true chord authoring for 4K
 - variable-BPM tracking
-- richer spectral analysis
+- richer spectral / frequency-band analysis
 - beatmap editor
 - replay files
 - song fingerprinting
