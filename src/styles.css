@@ -737,6 +737,19 @@ input:focus-visible,
 .range-setting input { width: 100%; margin-top: 14px; accent-color: var(--pink); }
 .range-setting small { display: block; color: #737c8f; line-height: 1.6; margin-top: 9px; }
 
+.settings-drawer .secondary-button.full + .secondary-button.full { margin-top: 10px; }
+
+.latency-info {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: rgba(90, 215, 255, .06);
+  border: 1px solid rgba(90, 215, 255, .14);
+  color: #a9ddeb;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .settings-note {
   display: flex;
   gap: 11px;
