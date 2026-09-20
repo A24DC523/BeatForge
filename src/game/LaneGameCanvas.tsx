@@ -22,6 +22,7 @@ interface ActiveLaneHold {
   lane: number;
   judge: Exclude<Judge, 'miss'>;
   broken: boolean;
+  releasedAt?: number;
 }
 
 interface LanePopup {
@@ -234,9 +235,22 @@ export function LaneGameCanvas({
   }, [applyJudge, beatmap.hitWindowMs, beatmap.objects, lanes]);
 
   const updateHolds = useCallback((nowMs: number) => {
+    const releaseGraceMs = Math.max(50, Math.min(100, beatmap.hitWindowMs * 0.6));
+
     for (const [id, active] of holdsRef.current.entries()) {
       const endTime = active.object.time + (active.object.duration ?? 0);
-      if (!lanePressed(active.lane) && nowMs < endTime - 40) active.broken = true;
+      const pressed = lanePressed(active.lane);
+
+      if (!pressed) {
+        if (active.releasedAt === undefined) active.releasedAt = nowMs;
+        const releasedFor = nowMs - active.releasedAt;
+        if (nowMs < endTime - releaseGraceMs && releasedFor > releaseGraceMs) {
+          active.broken = true;
+        }
+      } else {
+        active.releasedAt = undefined;
+      }
+
       if (nowMs < endTime) continue;
 
       holdsRef.current.delete(id);
@@ -247,7 +261,7 @@ export function LaneGameCanvas({
         active.object.type === 'slide' ? 'slide-end' : 'hold-end',
       );
     }
-  }, [applyJudge, lanePressed]);
+  }, [applyJudge, beatmap.hitWindowMs, lanePressed]);
 
   const draw = useCallback((nowMs: number) => {
     const canvas = canvasRef.current;
