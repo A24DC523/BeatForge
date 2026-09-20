@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateBeatmap } from '../beatmap';
-import type { AudioAnalysis, GameModeId } from '../types';
+import type { AudioAnalysis, Beatmap, GameModeId } from '../types';
 import { adaptBeatmapForMode } from './modeBeatmap';
 
 function fakeAnalysis(): AudioAnalysis {
@@ -52,6 +52,40 @@ describe('mode-specific beatmap generator', () => {
     for (const object of map.objects) {
       expect(object.x).toBeCloseTo(((object.lane ?? 0) + 0.5) / 4, 8);
     }
+  });
+
+  it('uses spectral character to shape 4K hand positions', () => {
+    const base: Beatmap = {
+      version: 1,
+      title: 'Spectral lanes',
+      artist: 'Test',
+      difficulty: 'hard',
+      difficultyLabel: 'HARD',
+      starRating: 5,
+      bpm: 120,
+      duration: 8,
+      approachMs: 880,
+      hitWindowMs: 125,
+      validation: { valid: true, repaired: 0, removed: 0, warnings: [] },
+      objects: Array.from({ length: 8 }, (_, i) => ({
+        id: i,
+        time: 500 + i * 600,
+        type: 'tap' as const,
+        x: 0.5,
+        y: 0.5,
+        weight: 1,
+        bandLow: i < 4 ? 0.95 : 0.12,
+        bandMid: 0.3,
+        bandHigh: i < 4 ? 0.1 : 0.96,
+      })),
+    };
+
+    const map = adaptBeatmapForMode(base, 'lanes4');
+    const lowLanes = map.objects.slice(0, 4).map((object) => object.lane);
+    const highLanes = map.objects.slice(4).map((object) => object.lane);
+
+    expect(lowLanes.every((lane) => lane === 1 || lane === 2)).toBe(true);
+    expect(highLanes.every((lane) => lane === 0 || lane === 3)).toBe(true);
   });
 
   it('keeps 2K patterns alternating without long one-side streaks', () => {
