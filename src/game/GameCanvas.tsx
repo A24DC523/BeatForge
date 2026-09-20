@@ -671,7 +671,7 @@ export function GameCanvas({
     audio.currentTime = 0;
     rootRef.current?.focus();
     try {
-      await hitSoundRef.current?.prime();
+      await hitSoundRef.current?.prime().catch(() => undefined);
       setStatus('playing');
       await audio.play();
     } catch {
