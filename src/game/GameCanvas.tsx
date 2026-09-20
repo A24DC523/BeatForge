@@ -431,23 +431,83 @@ export function GameCanvas({
           ctx.font = `700 ${Math.round(baseRadius * 0.3)}px ui-sans-serif, system-ui`;
           ctx.fillStyle = typeColor;
           ctx.fillText(object.type === 'hold' ? 'HOLD' : 'SLIDE', x, y + baseRadius * 1.42);
+
+          ctx.font = `700 ${Math.round(baseRadius * 0.25)}px ui-sans-serif, system-ui`;
+          ctx.fillStyle = 'rgba(255,255,255,.68)';
+          ctx.fillText(
+            `${((object.duration ?? 0) / 1000).toFixed(1)}s`,
+            x,
+            y + baseRadius * 1.78,
+          );
         }
       } else {
         const target = currentTargetFor(object, nowMs);
         const tx = target.x * w;
         const ty = target.y * h;
-        ctx.fillStyle = engaged.broken ? '#ff665f' : typeColor;
+        const endTime = object.time + (object.duration ?? 0);
+        const remainingMs = Math.max(0, endTime - nowMs);
+        const totalDuration = Math.max(object.duration ?? 1, 1);
+        const progressRatio = Math.max(0, Math.min(1, 1 - remainingMs / totalDuration));
+        const releaseGraceMs = Math.max(55, Math.min(110, beatmap.hitWindowMs * 0.65));
+        const nearRelease = remainingMs <= releaseGraceMs * 1.5;
+        const temporarilyReleased = engaged.releasedAt !== undefined && !engaged.broken;
+
+        ctx.fillStyle = engaged.broken
+          ? '#ff665f'
+          : temporarilyReleased
+            ? '#ffd784'
+            : nearRelease
+              ? '#ffffff'
+              : typeColor;
         ctx.globalAlpha = 0.95;
+        ctx.shadowColor = engaged.broken ? '#ff665f' : typeColor;
+        ctx.shadowBlur = nearRelease ? 28 : 18;
         ctx.beginPath();
         ctx.arc(tx, ty, baseRadius * 0.82, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
-        const remain = Math.max(0, (object.time + (object.duration ?? 0) - nowMs) / Math.max(object.duration ?? 1, 1));
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
+
+        ctx.strokeStyle = 'rgba(255,255,255,.18)';
+        ctx.lineWidth = 5;
         ctx.beginPath();
-        ctx.arc(tx, ty, baseRadius * 1.05, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remain);
+        ctx.arc(tx, ty, baseRadius * 1.12, 0, Math.PI * 2);
         ctx.stroke();
+
+        ctx.strokeStyle = engaged.broken
+          ? '#ff665f'
+          : temporarilyReleased
+            ? '#ffd784'
+            : nearRelease
+              ? '#ffffff'
+              : typeColor;
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(
+          tx,
+          ty,
+          baseRadius * 1.12,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * progressRatio,
+        );
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = engaged.broken ? '#ff8e89' : '#ffffff';
+        ctx.font = `900 ${Math.round(baseRadius * 0.34)}px ui-sans-serif, system-ui`;
+        ctx.fillText(
+          engaged.broken
+            ? 'BROKEN'
+            : temporarilyReleased
+              ? 'HOLD!'
+              : nearRelease
+                ? 'RELEASE'
+                : `${(remainingMs / 1000).toFixed(1)}s`,
+          tx,
+          ty + baseRadius * 1.72,
+        );
       }
     }
 
