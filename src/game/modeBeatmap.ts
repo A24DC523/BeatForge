@@ -178,7 +178,7 @@ function adaptDrum(objects: HitObject[]) {
 
     if (kind === previousKind) {
       sameKindStreak += 1;
-      if (sameKindStreak >= 3 && !accented) {
+      if (sameKindStreak >= 3 && !accented && !lowDominant && !highDominant) {
         kind = kind === 'don' ? 'ka' : 'don';
         sameKindStreak = 0;
       }
