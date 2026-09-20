@@ -117,29 +117,40 @@ function onsetEnvelope(energy: number[]) {
   return normalize(onset);
 }
 
-function estimateBpm(onset: number[], framesPerSecond: number) {
+function estimateBpmRange(
+  onset: number[],
+  framesPerSecond: number,
+  startFrame = 0,
+  endFrame = onset.length,
+  priorBpm = 128,
+  priorStrength = 1,
+) {
   let bestBpm = 120;
   let bestScore = -Infinity;
+  const start = Math.max(0, Math.floor(startFrame));
+  const end = Math.min(onset.length, Math.ceil(endFrame));
 
   for (let bpm = MIN_BPM; bpm <= MAX_BPM; bpm += 0.5) {
     const lag = Math.max(1, Math.round((framesPerSecond * 60) / bpm));
     let score = 0;
 
-    for (let i = lag; i < onset.length; i += 1) {
-      score += onset[i] * onset[i - lag];
+    for (let i = Math.max(start + lag, lag); i < end; i += 1) {
+      const previous = i - lag;
+      if (previous < start) continue;
+      score += onset[i] * onset[previous];
     }
 
     const harmonicLag = lag * 2;
-    if (harmonicLag < onset.length) {
+    if (start + harmonicLag < end) {
       let harmonicScore = 0;
-      for (let i = harmonicLag; i < onset.length; i += 1) {
+      for (let i = start + harmonicLag; i < end; i += 1) {
         harmonicScore += onset[i] * onset[i - harmonicLag];
       }
       score += harmonicScore * 0.22;
     }
 
-    const tempoPrior = 1 - Math.abs(bpm - 128) / 280;
-    score *= tempoPrior;
+    const priorPenalty = Math.min(0.24, Math.abs(bpm - priorBpm) / 280) * priorStrength;
+    score *= 1 - priorPenalty;
 
     if (score > bestScore) {
       bestScore = score;
@@ -148,6 +159,74 @@ function estimateBpm(onset: number[], framesPerSecond: number) {
   }
 
   return Math.round(bestBpm * 10) / 10;
+}
+
+function estimateBpm(onset: number[], framesPerSecond: number) {
+  return estimateBpmRange(onset, framesPerSecond);
+}
+
+function detectTempoMap(
+  onset: number[],
+  framesPerSecond: number,
+  duration: number,
+  globalBpm: number,
+) {
+  if (duration < 12) {
+    return [{ start: 0, end: duration, bpm: globalBpm, beatInterval: 60 / globalBpm }];
+  }
+
+  const windowSeconds = 8;
+  const raw: Array<{ start: number; end: number; bpm: number }> = [];
+
+  for (let start = 0; start < duration; start += windowSeconds) {
+    const end = Math.min(duration, start + windowSeconds);
+    if (end - start < 4 && raw.length > 0) {
+      raw[raw.length - 1].end = end;
+      break;
+    }
+
+    const bpm = estimateBpmRange(
+      onset,
+      framesPerSecond,
+      start * framesPerSecond,
+      end * framesPerSecond,
+      globalBpm,
+      0.35,
+    );
+    raw.push({ start, end, bpm });
+  }
+
+  const merged: Array<{ start: number; end: number; bpm: number; beatInterval: number }> = [];
+  for (const segment of raw) {
+    const previous = merged[merged.length - 1];
+    if (
+      previous &&
+      (
+        Math.abs(segment.bpm - previous.bpm) <= 5 ||
+        Math.abs(segment.bpm - previous.bpm) / Math.max(previous.bpm, 1) <= 0.04
+      )
+    ) {
+      const previousDuration = previous.end - previous.start;
+      const nextDuration = segment.end - segment.start;
+      const weighted =
+        (previous.bpm * previousDuration + segment.bpm * nextDuration) /
+        Math.max(previousDuration + nextDuration, 0.001);
+      previous.end = segment.end;
+      previous.bpm = Math.round(weighted * 10) / 10;
+      previous.beatInterval = 60 / previous.bpm;
+    } else {
+      merged.push({
+        start: segment.start,
+        end: segment.end,
+        bpm: segment.bpm,
+        beatInterval: 60 / segment.bpm,
+      });
+    }
+  }
+
+  return merged.length
+    ? merged
+    : [{ start: 0, end: duration, bpm: globalBpm, beatInterval: 60 / globalBpm }];
 }
 
 function estimateBeatOffset(onset: number[], framesPerSecond: number, bpm: number) {
@@ -169,6 +248,49 @@ function estimateBeatOffset(onset: number[], framesPerSecond: number, bpm: numbe
   }
 
   return bestPhase / framesPerSecond;
+}
+
+function buildBeatGrid(
+  onset: number[],
+  framesPerSecond: number,
+  duration: number,
+  tempoMap: Array<{ start: number; end: number; bpm: number; beatInterval: number }>,
+  globalBeatOffset: number,
+  globalBeatInterval: number,
+) {
+  const beats: number[] = [];
+
+  if (tempoMap.length <= 1) {
+    for (let time = globalBeatOffset; time < duration - 0.05; time += globalBeatInterval) {
+      if (time >= 0.15) beats.push(time);
+    }
+    return beats;
+  }
+
+  for (const segment of tempoMap) {
+    const startFrame = Math.max(0, Math.floor(segment.start * framesPerSecond));
+    const endFrame = Math.min(onset.length, Math.ceil(segment.end * framesPerSecond));
+    const localOnset = onset.slice(startFrame, endFrame);
+    const localOffset = estimateBeatOffset(localOnset, framesPerSecond, segment.bpm);
+    const interval = segment.beatInterval;
+
+    for (
+      let time = segment.start + localOffset;
+      time < Math.min(segment.end, duration - 0.05);
+      time += interval
+    ) {
+      if (time >= 0.15) beats.push(time);
+    }
+  }
+
+  beats.sort((a, b) => a - b);
+  const deduped: number[] = [];
+  for (const beat of beats) {
+    const previous = deduped[deduped.length - 1];
+    if (previous !== undefined && beat - previous < 0.09) continue;
+    deduped.push(beat);
+  }
+  return deduped;
 }
 
 function detectPeaks(onset: number[], framesPerSecond: number) {
@@ -200,16 +322,22 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioAnal
   while (beatOffset > beatInterval) beatOffset -= beatInterval;
   beatOffset = clamp(beatOffset, 0, beatInterval);
 
-  const beats: number[] = [];
-  for (let time = beatOffset; time < buffer.duration - 0.05; time += beatInterval) {
-    if (time >= 0.15) beats.push(time);
-  }
+  const tempoMap = detectTempoMap(onset, framesPerSecond, buffer.duration, bpm);
+  const beats = buildBeatGrid(
+    onset,
+    framesPerSecond,
+    buffer.duration,
+    tempoMap,
+    beatOffset,
+    beatInterval,
+  );
 
   return {
     duration: buffer.duration,
     bpm,
     beatInterval,
     beatOffset,
+    tempoMap,
     beats,
     energy,
     bands,
