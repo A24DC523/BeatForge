@@ -17,6 +17,11 @@ function fakeAnalysis(): AudioAnalysis {
     beatOffset: 0.5,
     beats,
     energy: Array.from({ length: 700 }, (_, i) => 0.28 + ((i * 29) % 65) / 100),
+    bands: {
+      low: Array.from({ length: 700 }, (_, i) => i < 350 ? 0.92 : 0.14),
+      mid: Array.from({ length: 700 }, () => 0.36),
+      high: Array.from({ length: 700 }, (_, i) => i < 350 ? 0.12 : 0.94),
+    },
     peaks: beats
       .flatMap((time, i) => i % 3 === 0 ? [time + beatInterval / 2] : [time + 0.025])
       .filter((time) => time < duration - 0.4),
@@ -76,6 +81,18 @@ describe('mode-specific beatmap generator', () => {
     expect(kinds.has('ka')).toBe(true);
     expect(map.objects.every((object) => object.type === 'tap')).toBe(true);
     expect(map.objects.every((object) => object.drumKind === 'don' || object.drumKind === 'ka')).toBe(true);
+
+    const lowDominant = map.objects.filter(
+      (object) => (object.bandLow ?? 0) > (object.bandHigh ?? 0) * 1.12,
+    );
+    const highDominant = map.objects.filter(
+      (object) => (object.bandHigh ?? 0) > (object.bandLow ?? 0) * 1.1,
+    );
+
+    expect(lowDominant.length).toBeGreaterThan(0);
+    expect(highDominant.length).toBeGreaterThan(0);
+    expect(lowDominant.every((object) => object.drumKind === 'don')).toBe(true);
+    expect(highDominant.every((object) => object.drumKind === 'ka')).toBe(true);
   });
 
   it('limits Catch travel so consecutive targets remain reachable', () => {
