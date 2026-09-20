@@ -47,7 +47,9 @@ function cleanTitle(filename: string) {
 
 function loadNumber(key: string, fallback: number) {
   try {
-    const parsed = Number(localStorage.getItem(key));
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : fallback;
   } catch {
     return fallback;
