@@ -16,37 +16,93 @@ function normalize(values: number[]) {
   return values.map((value) => value / max);
 }
 
-function buildMonoEnvelope(buffer: AudioBuffer) {
+function smooth(values: number[]) {
+  return values.map((value, i) => {
+    const a = values[i - 1] ?? value;
+    const b = values[i + 1] ?? value;
+    return (a + value * 2 + b) / 4;
+  });
+}
+
+function normalizeBands(low: number[], mid: number[], high: number[]) {
+  let max = 1e-9;
+  for (const list of [low, mid, high]) {
+    for (const value of list) {
+      if (value > max) max = value;
+    }
+  }
+  return {
+    low: low.map((value) => value / max),
+    mid: mid.map((value) => value / max),
+    high: high.map((value) => value / max),
+  };
+}
+
+function buildAudioEnvelopes(buffer: AudioBuffer) {
   const { numberOfChannels, length, sampleRate } = buffer;
   const frames = Math.ceil(length / FRAME_SIZE);
   const energy = new Array<number>(frames).fill(0);
+  const low = new Array<number>(frames).fill(0);
+  const mid = new Array<number>(frames).fill(0);
+  const high = new Array<number>(frames).fill(0);
+
+  const stride = 4;
+  const effectiveRate = sampleRate / stride;
+  const lowCut = Math.min(220, effectiveRate * 0.18);
+  const midCut = Math.min(2400, effectiveRate * 0.42);
+  const lowDecay = Math.exp((-2 * Math.PI * lowCut) / effectiveRate);
+  const midDecay = Math.exp((-2 * Math.PI * midCut) / effectiveRate);
+  const lowState = new Array<number>(numberOfChannels).fill(0);
+  const midState = new Array<number>(numberOfChannels).fill(0);
 
   for (let frame = 0; frame < frames; frame += 1) {
     const start = frame * FRAME_SIZE;
     const end = Math.min(start + FRAME_SIZE, length);
-    let sum = 0;
+    let fullSum = 0;
+    let lowSum = 0;
+    let midSum = 0;
+    let highSum = 0;
     let count = 0;
 
     for (let channel = 0; channel < numberOfChannels; channel += 1) {
       const data = buffer.getChannelData(channel);
-      for (let i = start; i < end; i += 4) {
+      let lpLow = lowState[channel];
+      let lpMid = midState[channel];
+
+      for (let i = start; i < end; i += stride) {
         const sample = data[i] ?? 0;
-        sum += sample * sample;
+        lpLow = (1 - lowDecay) * sample + lowDecay * lpLow;
+        lpMid = (1 - midDecay) * sample + midDecay * lpMid;
+
+        const lowBand = lpLow;
+        const midBand = lpMid - lpLow;
+        const highBand = sample - lpMid;
+
+        fullSum += sample * sample;
+        lowSum += lowBand * lowBand;
+        midSum += midBand * midBand;
+        highSum += highBand * highBand;
         count += 1;
       }
+
+      lowState[channel] = lpLow;
+      midState[channel] = lpMid;
     }
 
-    energy[frame] = count > 0 ? Math.sqrt(sum / count) : 0;
+    if (count > 0) {
+      energy[frame] = Math.sqrt(fullSum / count);
+      low[frame] = Math.sqrt(lowSum / count);
+      mid[frame] = Math.sqrt(midSum / count);
+      high[frame] = Math.sqrt(highSum / count);
+    }
   }
 
-  const smoothed = energy.map((value, i) => {
-    const a = energy[i - 1] ?? value;
-    const b = energy[i + 1] ?? value;
-    return (a + value * 2 + b) / 4;
-  });
+  const smoothedEnergy = smooth(energy);
+  const bands = normalizeBands(smooth(low), smooth(mid), smooth(high));
 
   return {
-    energy: normalize(smoothed),
+    energy: normalize(smoothedEnergy),
+    bands,
     framesPerSecond: sampleRate / FRAME_SIZE,
   };
 }
@@ -135,7 +191,7 @@ function detectPeaks(onset: number[], framesPerSecond: number) {
 }
 
 export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioAnalysis> {
-  const { energy, framesPerSecond } = buildMonoEnvelope(buffer);
+  const { energy, bands, framesPerSecond } = buildAudioEnvelopes(buffer);
   const onset = onsetEnvelope(energy);
   const bpm = estimateBpm(onset, framesPerSecond);
   const beatInterval = 60 / bpm;
@@ -156,6 +212,7 @@ export async function analyzeAudioBuffer(buffer: AudioBuffer): Promise<AudioAnal
     beatOffset,
     beats,
     energy,
+    bands,
     peaks: detectPeaks(onset, framesPerSecond),
     sampleRate: buffer.sampleRate,
   };
