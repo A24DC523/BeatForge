@@ -408,7 +408,13 @@ export default function App() {
               <div>
                 <span className="eyebrow">CURRENT MAP</span>
                 <strong>{selectedMap.difficultyLabel} · ★ {selectedMap.starRating.toFixed(1)}</strong>
-                <p>{selectedMap.objects.length} 個物件 · Approach {selectedMap.approachMs} ms · Hit Window ±{selectedMap.hitWindowMs} ms</p>
+                <p>
+                  {selectedMap.objects.length} 個物件 · Approach {selectedMap.approachMs} ms · Hit Window ±{selectedMap.hitWindowMs} ms
+                  {' · '}
+                  {selectedMap.validation.repaired > 0
+                    ? `Validator repaired ${selectedMap.validation.repaired}`
+                    : 'Validator PASS'}
+                </p>
               </div>
               <button className="primary-button play-button" type="button" onClick={() => setStage('game')}>
                 <Play size={21} fill="currentColor" />PLAY
