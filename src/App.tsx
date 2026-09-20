@@ -28,6 +28,7 @@ import { CatchGameCanvas } from './game/CatchGameCanvas';
 import { DrumGameCanvas } from './game/DrumGameCanvas';
 import { GameCanvas } from './game/GameCanvas';
 import { LaneGameCanvas } from './game/LaneGameCanvas';
+import { adaptBeatmapForMode } from './game/modeBeatmap';
 import { GAME_MODES, gameModeById } from './game/modes';
 import type { AudioAnalysis, Beatmap, DifficultyId, GameModeId, ScoreState, SongSource } from './types';
 
@@ -249,15 +250,19 @@ export default function App() {
   };
 
   const selectedMap = beatmaps?.[selectedDifficulty] ?? null;
+  const selectedModeMap = useMemo(
+    () => selectedMap ? adaptBeatmapForMode(selectedMap, selectedMode) : null,
+    [selectedMap, selectedMode],
+  );
   const selectedModeDefinition = useMemo(() => gameModeById(selectedMode), [selectedMode]);
   const selectedBest = useMemo(() => {
-    if (!song || !selectedMap) return null;
-    return bestScores[scoreKey(song, selectedMap, selectedMode)] ?? null;
-  }, [bestScores, selectedMap, selectedMode, song]);
+    if (!song || !selectedModeMap) return null;
+    return bestScores[scoreKey(song, selectedModeMap, selectedMode)] ?? null;
+  }, [bestScores, selectedModeMap, selectedMode, song]);
 
   const saveBestResult = (result: ScoreState) => {
-    if (!song || !selectedMap) return;
-    const key = scoreKey(song, selectedMap, selectedMode);
+    if (!song || !selectedModeMap) return;
+    const key = scoreKey(song, selectedModeMap, selectedMode);
     const previous = bestScores[key];
     const improved =
       !previous ||
@@ -287,12 +292,12 @@ export default function App() {
 
   const noteCountText = useMemo(() => {
     if (!beatmaps) return '—';
-    return beatmaps[selectedDifficulty].objects.length.toLocaleString();
-  }, [beatmaps, selectedDifficulty]);
+    return selectedModeMap?.objects.length.toLocaleString() ?? beatmaps[selectedDifficulty].objects.length.toLocaleString();
+  }, [beatmaps, selectedDifficulty, selectedModeMap]);
 
-  if (stage === 'game' && song && selectedMap) {
+  if (stage === 'game' && song && selectedModeMap) {
     const shared = {
-      beatmap: selectedMap,
+      beatmap: selectedModeMap,
       audioUrl: song.url,
       offsetMs,
       volume,
@@ -554,9 +559,9 @@ export default function App() {
             <div className="play-panel">
               <div>
                 <span className="eyebrow">CURRENT MAP</span>
-                <strong>{selectedModeDefinition.label} · {selectedMap.difficultyLabel} · ★ {selectedMap.starRating.toFixed(1)}</strong>
+                <strong>{selectedModeDefinition.label} · {selectedMap.difficultyLabel} · ★ {(selectedModeMap?.starRating ?? selectedMap.starRating).toFixed(1)}</strong>
                 <p>
-                  {selectedMap.objects.length} 個物件 · Approach {selectedMap.approachMs} ms · Hit Window ±{selectedMap.hitWindowMs} ms
+                  {selectedModeMap?.objects.length ?? selectedMap.objects.length} 個物件 · Approach {selectedMap.approachMs} ms · Hit Window ±{selectedMap.hitWindowMs} ms
                   {' · '}
                   {selectedMap.validation.repaired > 0
                     ? `Validator repaired ${selectedMap.validation.repaired}`
