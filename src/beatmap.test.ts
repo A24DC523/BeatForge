@@ -68,6 +68,23 @@ describe('BeatForge beatmap generator', () => {
       expect(map.objects[i - 2]?.type ?? 'tap').toBe('tap');
     }
   });
+
+  it('keeps generated sustain notes meaningfully long and free of following-note overlap', () => {
+    const map = generateBeatmap(fakeAnalysis(), 'hard');
+    const minimum = 360;
+
+    for (let i = 0; i < map.objects.length; i += 1) {
+      const object = map.objects[i];
+      if (object.type === 'tap') continue;
+
+      expect(object.duration ?? 0).toBeGreaterThanOrEqual(minimum);
+
+      const next = map.objects[i + 1];
+      if (next) {
+        expect(next.time).toBeGreaterThanOrEqual(object.time + (object.duration ?? 0));
+      }
+    }
+  });
 });
 
 function durationMs(seconds: number) {
