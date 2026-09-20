@@ -9,7 +9,10 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function normalize(values: number[]) {
-  const max = Math.max(...values, 1e-9);
+  let max = 1e-9;
+  for (const value of values) {
+    if (value > max) max = value;
+  }
   return values.map((value) => value / max);
 }
 
