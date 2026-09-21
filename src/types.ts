@@ -29,6 +29,12 @@ export interface AudioAnalysis {
   sampleRate: number;
 }
 
+export interface SlidePathPoint {
+  x: number;
+  y: number;
+  t: number;
+}
+
 export interface HitObject {
   id: number;
   time: number;
@@ -38,6 +44,7 @@ export interface HitObject {
   duration?: number;
   endX?: number;
   endY?: number;
+  slidePath?: SlidePathPoint[];
   weight: number;
   bandLow?: number;
   bandMid?: number;
