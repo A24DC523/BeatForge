@@ -592,7 +592,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <span>BeatForge v0.4.1 · Turn Music Into Play</span>
+        <span>BeatForge v0.5.0 · Turn Music Into Play</span>
         <span>Local-first audio processing</span>
       </footer>
 
