@@ -5,7 +5,16 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function cloneObject(object: HitObject): HitObject {
-  return { ...object };
+  return {
+    ...object,
+    slidePath: object.slidePath?.map((point) => ({ ...point })),
+  };
+}
+
+function clearSlideGeometry(object: HitObject) {
+  delete object.endX;
+  delete object.endY;
+  delete object.slidePath;
 }
 
 function laneCenter(lane: number, lanes: number) {
@@ -28,8 +37,7 @@ function adaptPulse(objects: HitObject[]) {
 
     if (object.type === 'slide') {
       object.type = 'hold';
-      delete object.endX;
-      delete object.endY;
+      clearSlideGeometry(object);
     }
 
     return object;
@@ -67,8 +75,7 @@ function adaptSplit(objects: HitObject[]) {
 
     if (object.type === 'slide') {
       object.type = 'hold';
-      delete object.endX;
-      delete object.endY;
+      clearSlideGeometry(object);
     }
 
     return object;
@@ -147,8 +154,7 @@ function adaptFourLane(objects: HitObject[], difficulty: DifficultyId) {
 
     if (object.type === 'slide') {
       object.type = 'hold';
-      delete object.endX;
-      delete object.endY;
+      clearSlideGeometry(object);
     }
 
     if (object.type !== 'tap') {
@@ -200,8 +206,7 @@ function adaptDrum(objects: HitObject[]) {
     object.y = 0.5;
     object.type = 'tap';
     delete object.duration;
-    delete object.endX;
-    delete object.endY;
+    clearSlideGeometry(object);
     delete object.lane;
     return object;
   });
@@ -234,8 +239,7 @@ function adaptCatch(objects: HitObject[], difficulty: DifficultyId) {
     object.y = 0.5;
     object.type = 'tap';
     delete object.duration;
-    delete object.endX;
-    delete object.endY;
+    clearSlideGeometry(object);
     delete object.lane;
     delete object.drumKind;
 
