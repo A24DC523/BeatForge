@@ -48,6 +48,7 @@ describe('mode-specific beatmap generator', () => {
     expect(map.objects.every((object) => Number.isInteger(object.lane))).toBe(true);
     expect(map.objects.every((object) => (object.lane ?? -1) >= 0 && (object.lane ?? 4) < 4)).toBe(true);
     expect(map.objects.every((object) => object.type !== 'slide')).toBe(true);
+    expect(map.objects.every((object) => object.slidePath === undefined)).toBe(true);
 
     for (const object of map.objects) {
       expect(object.x).toBeCloseTo(((object.lane ?? 0) + 0.5) / 4, 8);
@@ -105,6 +106,7 @@ describe('mode-specific beatmap generator', () => {
     expect(map.objects.every((object) => object.lane === 0)).toBe(true);
     expect(map.objects.every((object) => object.x === 0.5)).toBe(true);
     expect(map.objects.every((object) => object.type !== 'slide')).toBe(true);
+    expect(map.objects.every((object) => object.slidePath === undefined)).toBe(true);
   });
 
   it('creates explicit Don and Ka events for Drum mode', () => {
@@ -114,6 +116,7 @@ describe('mode-specific beatmap generator', () => {
     expect(kinds.has('don')).toBe(true);
     expect(kinds.has('ka')).toBe(true);
     expect(map.objects.every((object) => object.type === 'tap')).toBe(true);
+    expect(map.objects.every((object) => object.slidePath === undefined)).toBe(true);
     expect(map.objects.every((object) => object.drumKind === 'don' || object.drumKind === 'ka')).toBe(true);
 
     const lowDominant = map.objects.filter(
@@ -134,6 +137,7 @@ describe('mode-specific beatmap generator', () => {
 
     expect(map.objects.every((object) => object.x >= 0.1 && object.x <= 0.9)).toBe(true);
     expect(map.objects.every((object) => object.type === 'tap')).toBe(true);
+    expect(map.objects.every((object) => object.slidePath === undefined)).toBe(true);
 
     for (let i = 1; i < map.objects.length; i += 1) {
       const previous = map.objects[i - 1];
