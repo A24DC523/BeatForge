@@ -6,7 +6,7 @@
 
 BeatForge is a browser-first rhythm game that analyzes a user's own audio and automatically turns it into playable rhythm charts.
 
-The project is currently in the **v0.4.1 series** and is playable on desktop and mobile through GitHub Pages. v0.4 adds section-level tempo-map analysis, tempo-aware beat generation, and a substantial Hold / sustain reliability pass.
+The project is currently in the **v0.5.0 series** and is playable on desktop and mobile through GitHub Pages. v0.5 upgrades FORGE Slide notes from a straight A→B drag into deterministic multi-point curved tracking paths with path-aware validation and input grace.
 
 ## Highlights
 
@@ -15,7 +15,7 @@ The project is currently in the **v0.4.1 series** and is playable on desktop and
 - Browser-side global BPM, local tempo-map, beat, onset, energy, and Low / Mid / High spectral-band analysis
 - Phrase-aware Easy / Normal / Hard / Expert beatmap generation
 - Six gameplay modes: Forge, 4K Lanes, 2K Split, 1K Pulse, Drum, and Catch
-- Tap, Hold, and Slide objects
+- Tap, Hold, and multi-point curved Slide objects
 - Desktop controls: mouse cursor + Z/X, with mouse click support
 - Mobile controls: tap, hold, and drag
 - Perfect / Great / Good / Miss judgments
@@ -71,7 +71,7 @@ MISS
 
 The displayed score is the **actual score awarded for that hit**, including the current combo multiplier.
 
-Hold and Slide objects provide start feedback and final judgment feedback at their corresponding playfield positions.
+Hold and Slide objects provide start feedback and final judgment feedback at their corresponding playfield positions. FORGE Slide notes now expose their full curved route, intermediate guide nodes, completed-path highlight, and live tracking target.
 
 ### Hit effects
 
@@ -172,6 +172,24 @@ v0.4 also tightens long-note generation and judgment:
 - active Holds show progress, remaining time, `RELEASE` near the tail, and `BROKEN` when the sustain has already failed;
 - FORGE Hold notes show their duration before the hit and a circular sustain-progress indicator while held.
 
+## Slide path engine
+
+v0.5 replaces the previous straight-line FORGE Slide with a path-driven implementation:
+
+- generated Slide notes contain **3–5 deterministic path points** depending on difficulty;
+- intermediate points bend around the start/end vector to create short arc and S-shaped patterns;
+- high-frequency spectral content can increase curve character slightly without changing determinism;
+- one interpolation function drives both the rendered curve and the live judgment target, preventing visual/collision mismatch;
+- completed portions of the path highlight while the player is tracking the Slide;
+- moving slightly outside the tracking radius shows `TRACK!` first instead of failing instantly;
+- each difficulty has its own path tolerance and off-path grace period;
+- a very large deviation can still break immediately;
+- legacy two-point Slides remain playable through automatic fallback.
+
+The validator now checks Slide path bounds, time ordering, start/end synchronization, and per-segment travel speed. If another validator repair moves the Slide head, the complete path is resynchronized afterward.
+
+Non-FORGE modes remove this Pointer-specific path metadata when converting Slides to Holds or Taps.
+
 ## Beatmap Validator
 
 Generated maps pass through a validator before gameplay.
@@ -179,7 +197,8 @@ Generated maps pass through a validator before gameplay.
 It currently checks and repairs:
 
 - playfield coordinate bounds
-- Slide end-point bounds
+- Slide end-point and multi-point path bounds
+- Slide path ordering, endpoint synchronization, and per-segment speed
 - invalid sustain duration
 - sustain objects that exceed the end of the song
 - unsafe movement speed between objects
@@ -283,6 +302,7 @@ Audio File / Direct Audio URL
           +--> peak quantization
           +--> local density budget
           +--> pattern continuity
+          +--> multi-point Slide path generation
           |
           v
  Beatmap Validator
@@ -329,6 +349,8 @@ Current test coverage includes:
 - Low / Mid / High frequency-band separation
 - mode-specific beatmap playability rules
 - generated sustain spacing and minimum Hold duration
+- generated multi-point Slide path bounds and ordering
+- Slide path Validator repair and mode-conversion cleanup
 - Beatmap Validator sustain-overlap repair / removal behavior
 
 ## Current limitations
