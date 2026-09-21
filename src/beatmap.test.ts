@@ -69,6 +69,33 @@ describe('BeatForge beatmap generator', () => {
     }
   });
 
+  it('generates bounded multi-point slide paths', () => {
+    const analysis = fakeAnalysis();
+    analysis.bands = {
+      low: Array.from({ length: 600 }, () => 0.12),
+      mid: Array.from({ length: 600 }, () => 0.42),
+      high: Array.from({ length: 600 }, () => 0.98),
+    };
+    const map = generateBeatmap(analysis, 'expert');
+    const slides = map.objects.filter((object) => object.type === 'slide');
+
+    expect(slides.length).toBeGreaterThan(0);
+
+    for (const slide of slides) {
+      const path = slide.slidePath ?? [];
+      expect(path.length).toBeGreaterThanOrEqual(3);
+      expect(path[0]).toMatchObject({ x: slide.x, y: slide.y, t: 0 });
+      expect(path[path.length - 1]).toMatchObject({
+        x: slide.endX,
+        y: slide.endY,
+        t: 1,
+      });
+      expect(path.every((point) => point.x >= 0.12 && point.x <= 0.88)).toBe(true);
+      expect(path.every((point) => point.y >= 0.14 && point.y <= 0.86)).toBe(true);
+      expect(path.every((point, i) => i === 0 || point.t > path[i - 1].t)).toBe(true);
+    }
+  });
+
   it('keeps generated sustain notes meaningfully long and free of following-note overlap', () => {
     const map = generateBeatmap(fakeAnalysis(), 'hard');
     const minimum = 360;
