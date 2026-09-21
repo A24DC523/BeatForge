@@ -368,6 +368,56 @@ function sustainType(
   return 'tap' as const;
 }
 
+function buildSlidePath(
+  object: HitObject,
+  end: { x: number; y: number },
+  candidate: Candidate,
+  difficulty: DifficultyId,
+  phrase: number,
+): NonNullable<HitObject['slidePath']> {
+  const pointCount =
+    difficulty === 'easy' ? 3 :
+    difficulty === 'normal' ? 4 :
+    5;
+
+  const dx = end.x - object.x;
+  const dy = end.y - object.y;
+  const length = Math.max(Math.hypot(dx, dy), 0.001);
+  const nx = -dy / length;
+  const ny = dx / length;
+  const direction = seeded(candidate.time * 733 + phrase * 19) > 0.5 ? 1 : -1;
+  const spectralCurve = clamp(candidate.bandHigh - candidate.bandLow, -0.4, 0.5);
+  const baseCurve =
+    difficulty === 'easy' ? 0.045 :
+    difficulty === 'normal' ? 0.07 :
+    difficulty === 'hard' ? 0.095 :
+    0.115;
+  const curve = baseCurve + Math.max(0, spectralCurve) * 0.055;
+
+  const points: NonNullable<HitObject['slidePath']> = [
+    { x: object.x, y: object.y, t: 0 },
+  ];
+
+  for (let i = 1; i < pointCount - 1; i += 1) {
+    const t = i / (pointCount - 1);
+    const lineX = object.x + dx * t;
+    const lineY = object.y + dy * t;
+    const waveDirection = i % 2 === 1 ? direction : -direction * 0.72;
+    const envelope = Math.sin(Math.PI * t);
+    const jitter = 0.82 + seeded(candidate.time * 1000 + i * 61 + phrase) * 0.36;
+    const offset = curve * envelope * waveDirection * jitter;
+
+    points.push({
+      x: clamp(lineX + nx * offset, 0.12, 0.88),
+      y: clamp(lineY + ny * offset, 0.14, 0.86),
+      t,
+    });
+  }
+
+  points.push({ x: end.x, y: end.y, t: 1 });
+  return points;
+}
+
 function sustainDurationMs(
   candidate: Candidate,
   analysis: AudioAnalysis,
@@ -506,6 +556,13 @@ export function generateBeatmap(
         );
         object.endX = end.x;
         object.endY = end.y;
+        object.slidePath = buildSlidePath(
+          object,
+          end,
+          candidate,
+          difficulty,
+          phrase,
+        );
       }
     }
 
