@@ -21,6 +21,13 @@ const SUSTAIN_GAP_MS: Record<DifficultyId, number> = {
   expert: 70,
 };
 
+const SLIDE_SPEED_LIMIT: Record<DifficultyId, number> = {
+  easy: 0.95,
+  normal: 1.35,
+  hard: 2.0,
+  expert: 2.75,
+};
+
 const SPEED_LIMIT: Record<DifficultyId, number> = {
   easy: 0.8,
   normal: 1.2,
@@ -47,6 +54,95 @@ function clampTravel(previous: HitObject, current: HitObject, difficulty: Diffic
   return true;
 }
 
+function repairSlidePath(object: HitObject, difficulty: DifficultyId) {
+  if (object.type !== 'slide') {
+    if (object.slidePath) delete object.slidePath;
+    return { repaired: 0, warnings: [] as string[] };
+  }
+
+  let repaired = 0;
+  const warnings = new Set<string>();
+  const endX = clamp(Number.isFinite(object.endX) ? object.endX! : object.x, 0.12, 0.88);
+  const endY = clamp(Number.isFinite(object.endY) ? object.endY! : object.y, 0.14, 0.86);
+  const raw = Array.isArray(object.slidePath) ? object.slidePath : [];
+
+  let points = raw
+    .filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.t))
+    .map((point) => {
+      const x = clamp(point.x, 0.12, 0.88);
+      const y = clamp(point.y, 0.14, 0.86);
+      const t = clamp(point.t, 0, 1);
+      if (x !== point.x || y !== point.y || t !== point.t) {
+        repaired += 1;
+        warnings.add('slide-path-bounds');
+      }
+      return { x, y, t };
+    })
+    .sort((a, b) => a.t - b.t);
+
+  const unique: typeof points = [];
+  for (const point of points) {
+    const previous = unique[unique.length - 1];
+    if (previous && point.t - previous.t < 0.01) {
+      repaired += 1;
+      warnings.add('slide-path-order');
+      continue;
+    }
+    unique.push(point);
+  }
+  points = unique;
+
+  if (points.length < 2) {
+    points = [
+      { x: object.x, y: object.y, t: 0 },
+      { x: endX, y: endY, t: 1 },
+    ];
+    repaired += 1;
+    warnings.add('slide-path-missing');
+  } else {
+    const first = points[0];
+    if (first.t !== 0 || first.x !== object.x || first.y !== object.y) {
+      points[0] = { x: object.x, y: object.y, t: 0 };
+      repaired += 1;
+      warnings.add('slide-path-endpoints');
+    }
+
+    const lastIndex = points.length - 1;
+    const last = points[lastIndex];
+    if (last.t !== 1 || last.x !== endX || last.y !== endY) {
+      points[lastIndex] = { x: endX, y: endY, t: 1 };
+      repaired += 1;
+      warnings.add('slide-path-endpoints');
+    }
+  }
+
+  const durationSeconds = Math.max((object.duration ?? MIN_SUSTAIN_MS[difficulty]) / 1000, 0.001);
+  for (let i = 1; i < points.length; i += 1) {
+    const previous = points[i - 1];
+    const current = points[i];
+    const dt = Math.max((current.t - previous.t) * durationSeconds, 0.001);
+    const allowed = Math.max(0.075, SLIDE_SPEED_LIMIT[difficulty] * dt);
+    const dx = current.x - previous.x;
+    const dy = current.y - previous.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance > allowed && distance > 0) {
+      const scale = allowed / distance;
+      current.x = clamp(previous.x + dx * scale, 0.12, 0.88);
+      current.y = clamp(previous.y + dy * scale, 0.14, 0.86);
+      repaired += 1;
+      warnings.add('slide-path-speed');
+    }
+  }
+
+  const last = points[points.length - 1];
+  object.endX = last.x;
+  object.endY = last.y;
+  object.slidePath = points;
+
+  return { repaired, warnings: [...warnings] };
+}
+
 export function validateAndRepairObjects(
   source: HitObject[],
   durationMs: number,
@@ -64,7 +160,10 @@ export function validateAndRepairObjects(
       continue;
     }
 
-    const object: HitObject = { ...original };
+    const object: HitObject = {
+      ...original,
+      slidePath: original.slidePath?.map((point) => ({ ...point })),
+    };
     const oldX = object.x;
     const oldY = object.y;
     object.x = clamp(Number.isFinite(object.x) ? object.x : 0.5, 0.12, 0.88);
@@ -93,6 +192,7 @@ export function validateAndRepairObjects(
         delete object.duration;
         delete object.endX;
         delete object.endY;
+        delete object.slidePath;
         repaired += 1;
         warnings.add('short-sustain');
       } else {
@@ -108,6 +208,10 @@ export function validateAndRepairObjects(
         }
       }
     }
+
+    const slideRepair = repairSlidePath(object, difficulty);
+    repaired += slideRepair.repaired;
+    for (const warning of slideRepair.warnings) warnings.add(warning);
 
     const previous = objects[objects.length - 1];
     if (previous && previous.time === object.time) {
@@ -128,7 +232,15 @@ export function validateAndRepairObjects(
           delete previous.duration;
           delete previous.endX;
           delete previous.endY;
+          delete previous.slidePath;
         }
+
+        if (previous.type === 'slide') {
+          const previousSlideRepair = repairSlidePath(previous, difficulty);
+          repaired += previousSlideRepair.repaired;
+          for (const warning of previousSlideRepair.warnings) warnings.add(warning);
+        }
+
         repaired += 1;
         warnings.add('sustain-overlap');
       }
