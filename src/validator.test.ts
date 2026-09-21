@@ -22,6 +22,39 @@ describe('BeatForge beatmap validator', () => {
     expect(result.objects[1].endY).toBeGreaterThanOrEqual(0.14);
   });
 
+  it('repairs invalid slide path geometry and speed', () => {
+    const objects: HitObject[] = [
+      {
+        id: 0,
+        time: 500,
+        type: 'slide',
+        x: 0.2,
+        y: 0.2,
+        endX: 0.85,
+        endY: 0.8,
+        duration: 700,
+        weight: 1,
+        slidePath: [
+          { x: 0.2, y: 0.2, t: 0 },
+          { x: 2, y: -1, t: 0.5 },
+          { x: 0.85, y: 0.8, t: 1 },
+        ],
+      },
+    ];
+
+    const result = validateAndRepairObjects(objects, 4000, 'normal');
+    const slide = result.objects[0];
+    const path = slide.slidePath ?? [];
+
+    expect(path.length).toBeGreaterThanOrEqual(2);
+    expect(path[0]).toMatchObject({ x: slide.x, y: slide.y, t: 0 });
+    expect(path[path.length - 1]).toMatchObject({ x: slide.endX, y: slide.endY, t: 1 });
+    expect(path.every((point) => point.x >= 0.12 && point.x <= 0.88)).toBe(true);
+    expect(path.every((point) => point.y >= 0.14 && point.y <= 0.86)).toBe(true);
+    expect(path.every((point, i) => i === 0 || point.t > path[i - 1].t)).toBe(true);
+    expect(result.report.warnings.some((warning) => warning.startsWith('slide-path'))).toBe(true);
+  });
+
   it('repairs sustain overlap before the next note', () => {
     const repairable: HitObject[] = [
       { id: 0, time: 500, type: 'hold', x: 0.4, y: 0.4, duration: 1200, weight: 1 },
