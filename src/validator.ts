@@ -249,6 +249,12 @@ export function validateAndRepairObjects(
     if (previous && clampTravel(previous, object, difficulty)) {
       repaired += 1;
       warnings.add('travel-speed');
+
+      if (object.type === 'slide') {
+        const resyncedSlide = repairSlidePath(object, difficulty);
+        repaired += resyncedSlide.repaired;
+        for (const warning of resyncedSlide.warnings) warnings.add(warning);
+      }
     }
 
     object.id = objects.length;
