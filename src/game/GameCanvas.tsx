@@ -20,6 +20,7 @@ interface ActiveSustain {
   judge: Exclude<Judge, 'miss'>;
   broken: boolean;
   releasedAt?: number;
+  offPathSince?: number;
 }
 
 interface HitBurst {
@@ -75,6 +76,50 @@ function scoreValue(judge: Judge) {
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function slidePointsFor(object: HitObject) {
+  if (object.slidePath && object.slidePath.length >= 2) return object.slidePath;
+  return [
+    { x: object.x, y: object.y, t: 0 },
+    { x: object.endX ?? object.x, y: object.endY ?? object.y, t: 1 },
+  ];
+}
+
+function catmullRom(a: number, b: number, c: number, d: number, t: number) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (
+    2 * b +
+    (-a + c) * t +
+    (2 * a - 5 * b + 4 * c - d) * t2 +
+    (-a + 3 * b - 3 * c + d) * t3
+  );
+}
+
+function slidePointAt(object: HitObject, progress: number) {
+  const points = slidePointsFor(object);
+  const p = clamp01(progress);
+
+  let right = 1;
+  while (right < points.length - 1 && points[right].t < p) right += 1;
+
+  const left = Math.max(0, right - 1);
+  const p1 = points[left];
+  const p2 = points[right];
+  const p0 = points[Math.max(0, left - 1)];
+  const p3 = points[Math.min(points.length - 1, right + 1)];
+  const span = Math.max(p2.t - p1.t, 0.001);
+  const local = clamp01((p - p1.t) / span);
+
+  return {
+    x: Math.max(0.12, Math.min(0.88, catmullRom(p0.x, p1.x, p2.x, p3.x, local))),
+    y: Math.max(0.14, Math.min(0.86, catmullRom(p0.y, p1.y, p2.y, p3.y, local))),
+  };
 }
 
 function resultRank(accuracy: number, misses: number) {
@@ -239,11 +284,8 @@ export function GameCanvas({
   const currentTargetFor = useCallback((object: HitObject, nowMs: number) => {
     if (object.type !== 'slide') return { x: object.x, y: object.y };
     const duration = Math.max(object.duration ?? 1, 1);
-    const p = Math.max(0, Math.min(1, (nowMs - object.time) / duration));
-    return {
-      x: object.x + ((object.endX ?? object.x) - object.x) * p,
-      y: object.y + ((object.endY ?? object.y) - object.y) * p,
-    };
+    const p = (nowMs - object.time) / duration;
+    return slidePointAt(object, p);
   }, []);
 
   const validateSustains = useCallback((nowMs: number) => {
@@ -259,13 +301,35 @@ export function GameCanvas({
         if (nowMs < endTime - releaseGraceMs && releasedFor > releaseGraceMs) {
           active.broken = true;
         }
+        active.offPathSince = undefined;
         continue;
       }
 
       active.releasedAt = undefined;
       if (active.object.type === 'slide') {
         const target = currentTargetFor(active.object, nowMs);
-        if (distance(target, cursorRef.current) > 0.19) active.broken = true;
+        const error = distance(target, cursorRef.current);
+        const tolerance =
+          beatmap.difficulty === 'easy' ? 0.23 :
+          beatmap.difficulty === 'normal' ? 0.205 :
+          beatmap.difficulty === 'hard' ? 0.185 :
+          0.17;
+        const graceMs =
+          beatmap.difficulty === 'easy' ? 110 :
+          beatmap.difficulty === 'normal' ? 90 :
+          beatmap.difficulty === 'hard' ? 70 :
+          55;
+
+        if (error > tolerance * 1.65) {
+          active.broken = true;
+        } else if (error > tolerance) {
+          if (active.offPathSince === undefined) active.offPathSince = nowMs;
+          if (nowMs - active.offPathSince > graceMs) active.broken = true;
+        } else {
+          active.offPathSince = undefined;
+        }
+      } else {
+        active.offPathSince = undefined;
       }
     }
   }, [beatmap.hitWindowMs, currentTargetFor]);
@@ -385,21 +449,55 @@ export function GameCanvas({
       const typeColor = object.type === 'slide' ? '#8b7cff' : object.type === 'hold' ? '#45d6b4' : '#ff5e9c';
 
       if (object.type === 'slide') {
-        const endX = (object.endX ?? object.x) * w;
-        const endY = (object.endY ?? object.y) * h;
-        ctx.strokeStyle = 'rgba(139,124,255,.32)';
-        ctx.lineWidth = baseRadius * 1.05;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,.18)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
+        const samples = 36;
+        const engagedProgress = engaged
+          ? clamp01((nowMs - object.time) / Math.max(object.duration ?? 1, 1))
+          : 0;
+
+        const drawSlideSection = (
+          from: number,
+          to: number,
+          strokeStyle: string,
+          lineWidth: number,
+        ) => {
+          if (to <= from) return;
+          const first = slidePointAt(object, from);
+          ctx.strokeStyle = strokeStyle;
+          ctx.lineWidth = lineWidth;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          ctx.moveTo(first.x * w, first.y * h);
+
+          const steps = Math.max(2, Math.ceil(samples * (to - from)));
+          for (let step = 1; step <= steps; step += 1) {
+            const p = from + (to - from) * (step / steps);
+            const point = slidePointAt(object, p);
+            ctx.lineTo(point.x * w, point.y * h);
+          }
+          ctx.stroke();
+        };
+
+        drawSlideSection(0, 1, 'rgba(139,124,255,.28)', baseRadius * 1.05);
+        drawSlideSection(0, 1, 'rgba(255,255,255,.16)', 2);
+
+        if (engaged && engagedProgress > 0) {
+          drawSlideSection(
+            0,
+            engagedProgress,
+            engaged.broken ? 'rgba(255,102,95,.72)' : 'rgba(201,194,255,.72)',
+            baseRadius * 0.38,
+          );
+        }
+
+        const path = slidePointsFor(object);
+        for (let index = 1; index < path.length - 1; index += 1) {
+          const point = path[index];
+          ctx.fillStyle = 'rgba(210,205,255,.55)';
+          ctx.beginPath();
+          ctx.arc(point.x * w, point.y * h, Math.max(3, baseRadius * 0.11), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       if (!engaged) {
@@ -451,10 +549,11 @@ export function GameCanvas({
         const releaseGraceMs = Math.max(55, Math.min(110, beatmap.hitWindowMs * 0.65));
         const nearRelease = remainingMs <= releaseGraceMs * 1.5;
         const temporarilyReleased = engaged.releasedAt !== undefined && !engaged.broken;
+        const trackingLost = engaged.offPathSince !== undefined && !engaged.broken;
 
         ctx.fillStyle = engaged.broken
           ? '#ff665f'
-          : temporarilyReleased
+          : temporarilyReleased || trackingLost
             ? '#ffd784'
             : nearRelease
               ? '#ffffff'
@@ -476,7 +575,7 @@ export function GameCanvas({
 
         ctx.strokeStyle = engaged.broken
           ? '#ff665f'
-          : temporarilyReleased
+          : temporarilyReleased || trackingLost
             ? '#ffd784'
             : nearRelease
               ? '#ffffff'
@@ -502,9 +601,11 @@ export function GameCanvas({
             ? 'BROKEN'
             : temporarilyReleased
               ? 'HOLD!'
-              : nearRelease
-                ? 'RELEASE'
-                : `${(remainingMs / 1000).toFixed(1)}s`,
+              : trackingLost
+                ? 'TRACK!'
+                : nearRelease
+                  ? 'RELEASE'
+                  : `${(remainingMs / 1000).toFixed(1)}s`,
           tx,
           ty + baseRadius * 1.72,
         );
