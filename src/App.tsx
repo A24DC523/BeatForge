@@ -7,6 +7,7 @@ import {
   Gamepad2,
   Gauge,
   Github,
+  Languages,
   Link2,
   LoaderCircle,
   MousePointer2,
@@ -20,7 +21,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { decodeAudioFile, fetchAudioUrl } from './audio';
 import { DIFFICULTIES, generateAllBeatmaps } from './beatmap';
 import { createDemoFile } from './demo';
@@ -30,6 +31,13 @@ import { GameCanvas } from './game/GameCanvas';
 import { LaneGameCanvas } from './game/LaneGameCanvas';
 import { adaptBeatmapForMode } from './game/modeBeatmap';
 import { GAME_MODES, gameModeById } from './game/modes';
+import {
+  localeLabelKey,
+  SUPPORTED_LOCALES,
+  useI18n,
+  type Locale,
+  type MessageKey,
+} from './i18n';
 import type { AudioAnalysis, Beatmap, DifficultyId, GameModeId, ScoreState, SongSource } from './types';
 
 type Stage = 'home' | 'analyzing' | 'select' | 'game';
@@ -43,6 +51,11 @@ interface BestRecord {
   maxCombo: number;
   miss: number;
   playedAt: number;
+}
+
+interface LocalizedNotice {
+  key: MessageKey;
+  variables?: Record<string, string | number>;
 }
 
 function loadBestScores(): Record<string, BestRecord> {
@@ -100,17 +113,26 @@ function isYouTubeUrl(raw: string) {
   }
 }
 
+function difficultyLabelKey(id: DifficultyId): MessageKey {
+  return `difficulty.${id}.label` as MessageKey;
+}
+
+function difficultyDescriptionKey(id: DifficultyId): MessageKey {
+  return `difficulty.${id}.description` as MessageKey;
+}
+
 export default function App() {
+  const { locale, setLocale, t, number } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previousUrlRef = useRef<string | null>(null);
   const [stage, setStage] = useState<Stage>('home');
-  const [analysisStep, setAnalysisStep] = useState('準備音訊');
+  const [analysisStep, setAnalysisStep] = useState<MessageKey>('app.stepDecode');
   const [analysis, setAnalysis] = useState<AudioAnalysis | null>(null);
   const [beatmaps, setBeatmaps] = useState<Record<DifficultyId, Beatmap> | null>(null);
   const [song, setSong] = useState<SongSource | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyId>('normal');
   const [selectedMode, setSelectedMode] = useState<GameModeId>('forge');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<LocalizedNotice | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -119,7 +141,7 @@ export default function App() {
   const [volume, setVolume] = useState(() => loadNumber('beatforge.volume', 0.82));
   const [hitSoundVolume, setHitSoundVolume] = useState(() => loadNumber('beatforge.hitSoundVolume', 0.55));
   const [bestScores, setBestScores] = useState<Record<string, BestRecord>>(() => loadBestScores());
-  const [latencyInfo, setLatencyInfo] = useState('');
+  const [latencyInfo, setLatencyInfo] = useState<LocalizedNotice | null>(null);
 
   useEffect(() => {
     try {
@@ -136,7 +158,7 @@ export default function App() {
   }, []);
 
   const estimateDeviceLatency = async () => {
-    setLatencyInfo('正在讀取音訊裝置延遲…');
+    setLatencyInfo({ key: 'app.latencyReading' });
     let context: AudioContext | null = null;
     try {
       context = new AudioContext({ latencyHint: 'interactive' });
@@ -147,27 +169,28 @@ export default function App() {
       const estimatedMs = Math.round(baseMs + outputMs);
 
       if (estimatedMs <= 0) {
-        setLatencyInfo('瀏覽器未提供可用的延遲數值，請保留手動 Offset。');
+        setLatencyInfo({ key: 'app.latencyUnavailable' });
         return;
       }
 
       const recommended = Math.max(-200, Math.min(200, -estimatedMs));
       setOffsetMs(recommended);
-      setLatencyInfo(
-        `估算輸出延遲約 ${estimatedMs} ms，已套用 ${recommended} ms Offset。可再按手感微調。`,
-      );
+      setLatencyInfo({
+        key: 'app.latencyApplied',
+        variables: { estimated: estimatedMs, offset: recommended },
+      });
     } catch {
-      setLatencyInfo('目前瀏覽器無法自動估算延遲，請使用手動 Offset。');
+      setLatencyInfo({ key: 'app.latencyFailed' });
     } finally {
       await context?.close().catch(() => undefined);
     }
   };
 
   const processFile = async (file: File) => {
-    setError('');
+    setError(null);
 
     if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      setError(`檔案太大。BeatForge 目前支援最多 ${MAX_FILE_MB} MB。`);
+      setError({ key: 'app.errorTooLarge', variables: { max: MAX_FILE_MB } });
       return;
     }
 
@@ -175,22 +198,22 @@ export default function App() {
       file.type.startsWith('audio/') ||
       /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
     if (!looksLikeAudio) {
-      setError('請選擇 MP3、WAV、M4A、AAC、OGG 或 FLAC 音訊檔案。');
+      setError({ key: 'app.errorInvalidAudio' });
       return;
     }
 
     setStage('analyzing');
-    setAnalysisStep('正在解碼音訊');
+    setAnalysisStep('app.stepDecode');
 
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const decoded = await decodeAudioFile(file);
-      setAnalysisStep('正在分析 BPM、Tempo Map 與 Low / Mid / High 頻段');
+      setAnalysisStep('app.stepAnalyze');
       await new Promise<void>((resolve) => setTimeout(resolve, 80));
 
       const title = cleanTitle(file.name);
       const artist = file.name.startsWith('BeatForge Demo') ? 'BeatForge' : 'Local audio';
-      setAnalysisStep('正在生成四個難度');
+      setAnalysisStep('app.stepGenerate');
       const maps = generateAllBeatmaps(decoded.analysis, title, artist);
 
       if (previousUrlRef.current) URL.revokeObjectURL(previousUrlRef.current);
@@ -202,7 +225,7 @@ export default function App() {
       setSong({ file, url, title, artist });
       setSelectedDifficulty('normal');
       setSelectedMode('forge');
-      setAnalysisStep('譜面完成');
+      setAnalysisStep('app.stepDone');
       await new Promise<void>((resolve) => setTimeout(resolve, 180));
       setStage('select');
     } catch (cause) {
@@ -210,8 +233,8 @@ export default function App() {
       setStage('home');
       setError(
         cause instanceof Error
-          ? `無法分析這首音樂：${cause.message}`
-          : '無法分析這首音樂，請嘗試其他音訊格式。',
+          ? { key: 'app.errorAnalyze', variables: { message: cause.message } }
+          : { key: 'app.errorAnalyzeGeneric' },
       );
     }
   };
@@ -221,28 +244,26 @@ export default function App() {
     if (file) void processFile(file);
   };
 
-  const importUrl = async (event: React.FormEvent) => {
+  const importUrl = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = urlInput.trim();
     if (!trimmed) return;
 
     if (isYouTubeUrl(trimmed)) {
-      setError(
-        'YouTube 不允許第三方服務下載或分離其影音內容，因此 BeatForge 不會直接抽取 YouTube 音訊。請上傳你有權使用的本地音訊檔；直接音訊網址則可自動分析。',
-      );
+      setError({ key: 'app.errorYouTube' });
       return;
     }
 
     setUrlLoading(true);
-    setError('');
+    setError(null);
     try {
       const file = await fetchAudioUrl(trimmed);
       await processFile(file);
     } catch (cause) {
       setError(
         cause instanceof Error
-          ? `網址匯入失敗：${cause.message} 來源網站亦需要允許瀏覽器 CORS 存取。`
-          : '網址匯入失敗。',
+          ? { key: 'app.errorUrl', variables: { message: cause.message } }
+          : { key: 'app.errorUrlGeneric' },
       );
     } finally {
       setUrlLoading(false);
@@ -304,8 +325,8 @@ export default function App() {
 
   const noteCountText = useMemo(() => {
     if (!beatmaps) return '—';
-    return selectedModeMap?.objects.length.toLocaleString() ?? beatmaps[selectedDifficulty].objects.length.toLocaleString();
-  }, [beatmaps, selectedDifficulty, selectedModeMap]);
+    return number(selectedModeMap?.objects.length ?? beatmaps[selectedDifficulty].objects.length);
+  }, [beatmaps, number, selectedDifficulty, selectedModeMap]);
 
   if (stage === 'game' && song && selectedModeMap) {
     const shared = {
@@ -321,33 +342,36 @@ export default function App() {
     if (selectedMode === 'forge') return <GameCanvas {...shared} />;
     if (selectedMode === 'drum') return <DrumGameCanvas {...shared} />;
     if (selectedMode === 'catch') return <CatchGameCanvas {...shared} />;
-
-    return (
-      <LaneGameCanvas
-        {...shared}
-        mode={selectedMode}
-      />
-    );
+    return <LaneGameCanvas {...shared} mode={selectedMode} />;
   }
+
+  const selectedDesktopControl = t(selectedModeDefinition.controlsDesktopKey);
+  const selectedMobileControl = t(selectedModeDefinition.controlsMobileKey);
 
   return (
     <div className="app">
       <header className="topbar">
-        <button className="brand-button" type="button" onClick={() => setStage('home')} aria-label="BeatForge 首頁">
+        <button className="brand-button" type="button" onClick={() => setStage('home')} aria-label="BeatForge">
           <span className="brand-mark"><AudioLines size={24} /></span>
           <span className="brand-copy"><strong>BeatForge</strong><small>TURN MUSIC INTO PLAY</small></span>
         </button>
 
-        <nav className="top-actions" aria-label="主要功能">
+        <nav className="top-actions" aria-label="BeatForge">
           {stage === 'select' && (
             <button className="ghost-button" type="button" onClick={() => setStage('home')}>
-              <ArrowLeft size={17} />換一首歌
+              <ArrowLeft size={17} />{t('app.changeSong')}
             </button>
           )}
+          <label className="language-control compact" aria-label={t('language.label')}>
+            <Languages size={16} />
+            <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+              {SUPPORTED_LOCALES.map((item) => <option key={item} value={item}>{t(localeLabelKey(item))}</option>)}
+            </select>
+          </label>
           <a className="ghost-button desktop-only" href="https://github.com/A24DC523/BeatForge" target="_blank" rel="noreferrer">
             <Github size={17} />GitHub
           </a>
-          <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="設定">
+          <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label={t('app.settings')}>
             <Settings2 size={20} />
           </button>
         </nav>
@@ -357,13 +381,13 @@ export default function App() {
         <main>
           <section className="hero-section">
             <div className="hero-copy">
-              <div className="pill"><Sparkles size={15} />AUTO BEATMAP ENGINE</div>
-              <h1>你的音樂，<br /><span>即刻變成遊戲。</span></h1>
-              <p>上傳歌曲，BeatForge 會在瀏覽器分析 BPM、Tempo Change、Onset、能量與 Low / Mid / High 頻段，自動生成 Easy 至 Expert 四個可玩的節奏譜面。</p>
+              <div className="pill"><Sparkles size={15} />{t('app.heroKicker')}</div>
+              <h1>{t('app.heroTitleA')}<br /><span>{t('app.heroTitleB')}</span></h1>
+              <p>{t('app.heroDescription')}</p>
               <div className="hero-points">
-                <span><ShieldCheck size={16} />音訊留在你的裝置</span>
-                <span><Smartphone size={16} />手機 / 電腦雙操作</span>
-                <span><Zap size={16} />毋須帳戶即可開始</span>
+                <span><ShieldCheck size={16} />{t('app.localAudio')}</span>
+                <span><Smartphone size={16} />{t('app.mobileDesktop')}</span>
+                <span><Zap size={16} />{t('app.noAccount')}</span>
               </div>
             </div>
 
@@ -391,18 +415,18 @@ export default function App() {
                   <span className="orbit orbit-two" />
                   <span className="upload-core"><Upload size={30} /></span>
                 </div>
-                <h2>DROP A SONG</h2>
-                <p>拖放音訊，或者從裝置選擇檔案</p>
+                <h2>{t('app.dropSong')}</h2>
+                <p>{t('app.dropHelp')}</p>
                 <button className="primary-button" type="button" onClick={() => fileInputRef.current?.click()}>
-                  <FileAudio size={18} />選擇音樂
+                  <FileAudio size={18} />{t('app.chooseMusic')}
                 </button>
-                <small>MP3 · WAV · M4A · AAC · OGG · FLAC · 最大 {MAX_FILE_MB} MB</small>
+                <small>{t('app.fileFormats', { max: MAX_FILE_MB })}</small>
               </div>
 
-              <div className="or-divider"><span>OR</span></div>
+              <div className="or-divider"><span>{t('app.or')}</span></div>
 
               <form className="url-form" onSubmit={importUrl}>
-                <label htmlFor="audio-url"><Link2 size={16} />直接音訊網址</label>
+                <label htmlFor="audio-url"><Link2 size={16} />{t('app.directAudioUrl')}</label>
                 <div className="url-row">
                   <input
                     id="audio-url"
@@ -411,51 +435,36 @@ export default function App() {
                     placeholder="https://example.com/song.mp3"
                     inputMode="url"
                   />
-                  <button type="submit" className="mini-submit" disabled={urlLoading} aria-label="匯入網址">
+                  <button type="submit" className="mini-submit" disabled={urlLoading} aria-label={t('app.directAudioUrl')}>
                     {urlLoading ? <LoaderCircle className="spin" size={19} /> : <ChevronRight size={20} />}
                   </button>
                 </div>
-                <p className="url-hint">支援允許 CORS 的直接音訊連結。YouTube 等平台受其內容政策限制，請改用你有權使用的本地檔案。</p>
+                <p className="url-hint">{t('app.urlHint')}</p>
               </form>
 
               <button className="demo-button" type="button" onClick={() => void processFile(createDemoFile())}>
-                <Play size={16} />沒有歌曲？立即玩 Neon Pulse Demo
+                <Play size={16} />{t('app.demo')}
               </button>
             </div>
           </section>
 
           {error && (
-            <div className="error-banner" role="alert"><X size={18} /><span>{error}</span></div>
+            <div className="error-banner" role="alert"><X size={18} /><span>{t(error.key, error.variables)}</span></div>
           )}
 
-          <section className="feature-strip" aria-label="BeatForge 功能">
-            <article>
-              <span className="feature-icon"><Gauge size={22} /></span>
-              <div><strong>Tempo + Spectrum</strong><p>本機估算變速段落、拍點、Low / Mid / High 與節奏峰值。</p></div>
-            </article>
-            <article>
-              <span className="feature-icon"><Sparkles size={22} /></span>
-              <div><strong>4 Difficulties</strong><p>同一 Master Timing 自動衍生四級譜面。</p></div>
-            </article>
-            <article>
-              <span className="feature-icon"><Gamepad2 size={22} /></span>
-              <div><strong>6 Game Modes</strong><p>Pointer、4K、2K、1K、Drum、Catch 共用自動譜面核心。</p></div>
-            </article>
+          <section className="feature-strip" aria-label="BeatForge">
+            <article><span className="feature-icon"><Gauge size={22} /></span><div><strong>{t('app.featureTempoTitle')}</strong><p>{t('app.featureTempoDescription')}</p></div></article>
+            <article><span className="feature-icon"><Sparkles size={22} /></span><div><strong>{t('app.featureDifficultyTitle')}</strong><p>{t('app.featureDifficultyDescription')}</p></div></article>
+            <article><span className="feature-icon"><Gamepad2 size={22} /></span><div><strong>{t('app.featureModesTitle')}</strong><p>{t('app.featureModesDescription')}</p></div></article>
           </section>
 
           <section className="how-section">
-            <div className="section-heading">
-              <span className="eyebrow">HOW IT WORKS</span>
-              <h2>由聲音，到譜面，再到遊戲。</h2>
-            </div>
+            <div className="section-heading"><span className="eyebrow">{t('app.howKicker')}</span><h2>{t('app.howTitle')}</h2></div>
             <div className="pipeline">
-              <div><span>01</span><Music2 size={26} /><strong>Decode</strong><p>讀取你的音訊波形</p></div>
-              <i />
-              <div><span>02</span><AudioLines size={26} /><strong>Analyze</strong><p>Tempo Map / Onset / Spectrum / Phrases</p></div>
-              <i />
-              <div><span>03</span><Sparkles size={26} /><strong>Forge</strong><p>建立段落感知多難度 Pattern</p></div>
-              <i />
-              <div><span>04</span><Gamepad2 size={26} /><strong>Play</strong><p>即時開始挑戰</p></div>
+              <div><span>01</span><Music2 size={26} /><strong>{t('app.decode')}</strong><p>{t('app.decodeDescription')}</p></div><i />
+              <div><span>02</span><AudioLines size={26} /><strong>{t('app.analyze')}</strong><p>{t('app.analyzeDescription')}</p></div><i />
+              <div><span>03</span><Sparkles size={26} /><strong>{t('app.forge')}</strong><p>{t('app.forgeDescription')}</p></div><i />
+              <div><span>04</span><Gamepad2 size={26} /><strong>{t('app.play')}</strong><p>{t('app.playDescription')}</p></div>
             </div>
           </section>
         </main>
@@ -464,17 +473,13 @@ export default function App() {
       {stage === 'analyzing' && (
         <main className="analysis-page">
           <div className="analysis-visual">
-            <div className="analysis-ring ring-a" />
-            <div className="analysis-ring ring-b" />
-            <div className="analysis-ring ring-c" />
+            <div className="analysis-ring ring-a" /><div className="analysis-ring ring-b" /><div className="analysis-ring ring-c" />
             <div className="analysis-core"><AudioLines size={42} /></div>
           </div>
-          <span className="eyebrow">FORGING BEATMAP</span>
-          <h1>{analysisStep}</h1>
-          <p>所有音訊分析都在你的瀏覽器內完成。</p>
-          <div className="analysis-bars" aria-hidden="true">
-            {Array.from({ length: 26 }, (_, i) => <span key={i} style={{ animationDelay: `${i * 34}ms` }} />)}
-          </div>
+          <span className="eyebrow">{t('app.forging')}</span>
+          <h1>{t(analysisStep)}</h1>
+          <p>{t('app.analysisLocal')}</p>
+          <div className="analysis-bars" aria-hidden="true">{Array.from({ length: 26 }, (_, i) => <span key={i} style={{ animationDelay: `${i * 34}ms` }} />)}</div>
         </main>
       )}
 
@@ -482,49 +487,34 @@ export default function App() {
         <main className="song-page">
           <section className="song-hero">
             <div className="cover-art" aria-hidden="true">
-              <div className="cover-disc"><AudioLines size={54} /></div>
-              <span className="cover-ring cover-ring-a" />
-              <span className="cover-ring cover-ring-b" />
+              <div className="cover-disc"><AudioLines size={54} /></div><span className="cover-ring cover-ring-a" /><span className="cover-ring cover-ring-b" />
             </div>
             <div className="song-meta">
-              <span className="pill"><CheckCircle2 size={14} />BEATMAP READY</span>
-              <h1>{song.title}</h1>
-              <p>{song.artist}</p>
+              <span className="pill"><CheckCircle2 size={14} />{t('app.beatmapReady')}</span>
+              <h1>{song.title}</h1><p>{song.artist}</p>
               <div className="song-stats">
-                <div><span>BPM</span><strong>{tempoText}</strong></div>
-                <div><span>LENGTH</span><strong>{formatDuration(analysis.duration)}</strong></div>
-                <div><span>OBJECTS</span><strong>{noteCountText}</strong></div>
-                <div><span>STAR</span><strong>{selectedMap.starRating.toFixed(1)}</strong></div>
+                <div><span>{t('app.bpm')}</span><strong>{tempoText}</strong></div>
+                <div><span>{t('app.length')}</span><strong>{formatDuration(analysis.duration)}</strong></div>
+                <div><span>{t('app.objects')}</span><strong>{noteCountText}</strong></div>
+                <div><span>{t('app.star')}</span><strong>{(selectedModeMap?.starRating ?? selectedMap.starRating).toFixed(1)}</strong></div>
               </div>
             </div>
           </section>
 
           <section className="mode-section">
             <div className="section-heading compact">
-              <div><span className="eyebrow">SELECT MODE</span><h2>選擇遊玩方式</h2></div>
-              <div className="control-legend">
-                <span><Gamepad2 size={15} />6 種玩法共用同一首歌</span>
-              </div>
+              <div><span className="eyebrow">{t('app.selectModeKicker')}</span><h2>{t('app.selectModeTitle')}</h2></div>
+              <div className="control-legend"><span><Gamepad2 size={15} />{t('app.sharedSong')}</span></div>
             </div>
-
             <div className="mode-grid">
               {GAME_MODES.map((mode) => {
                 const active = selectedMode === mode.id;
                 return (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    className={`mode-card ${active ? 'active' : ''}`}
-                    onClick={() => setSelectedMode(mode.id)}
-                    aria-pressed={active}
-                  >
-                    <span className="mode-card-kicker">{mode.shortLabel}</span>
+                  <button key={mode.id} type="button" className={`mode-card ${active ? 'active' : ''}`} onClick={() => setSelectedMode(mode.id)} aria-pressed={active}>
+                    <span className="mode-card-kicker">{t(mode.shortKey)}</span>
                     <strong>{mode.label}</strong>
-                    <p>{mode.description}</p>
-                    <div className="mode-controls">
-                      <span>{mode.controlsDesktop}</span>
-                      <span>{mode.controlsMobile}</span>
-                    </div>
+                    <p>{t(mode.descriptionKey)}</p>
+                    <div className="mode-controls"><span>{t(mode.controlsDesktopKey)}</span><span>{t(mode.controlsMobileKey)}</span></div>
                     {active && <CheckCircle2 className="mode-check" size={20} />}
                   </button>
                 );
@@ -534,34 +524,23 @@ export default function App() {
 
           <section className="difficulty-section">
             <div className="section-heading compact">
-              <div><span className="eyebrow">SELECT DIFFICULTY</span><h2>選擇你的挑戰</h2></div>
+              <div><span className="eyebrow">{t('app.selectDifficultyKicker')}</span><h2>{t('app.selectDifficultyTitle')}</h2></div>
               <div className="control-legend">
-                <span><MousePointer2 size={15} />電腦：{selectedModeDefinition.controlsDesktop}</span>
-                <span><Smartphone size={15} />手機：{selectedModeDefinition.controlsMobile}</span>
+                <span><MousePointer2 size={15} />{t('common.desktop')}：{selectedDesktopControl}</span>
+                <span><Smartphone size={15} />{t('common.mobile')}：{selectedMobileControl}</span>
               </div>
             </div>
 
             <div className="difficulty-list">
               {DIFFICULTIES.map((preset) => {
                 const map = beatmaps[preset.id];
+                const modeMap = adaptBeatmapForMode(map, selectedMode);
                 const active = selectedDifficulty === preset.id;
                 return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className={`difficulty-card diff-${preset.id} ${active ? 'active' : ''}`}
-                    onClick={() => setSelectedDifficulty(preset.id)}
-                    aria-pressed={active}
-                  >
+                  <button key={preset.id} type="button" className={`difficulty-card diff-${preset.id} ${active ? 'active' : ''}`} onClick={() => setSelectedDifficulty(preset.id)} aria-pressed={active}>
                     <span className="diff-accent" />
-                    <span className="diff-copy">
-                      <strong>{preset.label}</strong>
-                      <small>{preset.description}</small>
-                    </span>
-                    <span className="diff-metrics">
-                      <em>★ {adaptBeatmapForMode(map, selectedMode).starRating.toFixed(1)}</em>
-                      <small>{adaptBeatmapForMode(map, selectedMode).objects.length} objects</small>
-                    </span>
+                    <span className="diff-copy"><strong>{t(difficultyLabelKey(preset.id))}</strong><small>{t(difficultyDescriptionKey(preset.id))}</small></span>
+                    <span className="diff-metrics"><em>★ {modeMap.starRating.toFixed(1)}</em><small>{t('app.mapObjects', { count: number(modeMap.objects.length) })}</small></span>
                     <span className="diff-radio">{active && <CheckCircle2 size={20} />}</span>
                   </button>
                 );
@@ -570,77 +549,62 @@ export default function App() {
 
             <div className="play-panel">
               <div>
-                <span className="eyebrow">CURRENT MAP</span>
-                <strong>{selectedModeDefinition.label} · {selectedMap.difficultyLabel} · ★ {(selectedModeMap?.starRating ?? selectedMap.starRating).toFixed(1)}</strong>
+                <span className="eyebrow">{t('app.currentMap')}</span>
+                <strong>{selectedModeDefinition.label} · {t(difficultyLabelKey(selectedMap.difficulty))} · ★ {(selectedModeMap?.starRating ?? selectedMap.starRating).toFixed(1)}</strong>
                 <p>
-                  {selectedModeMap?.objects.length ?? selectedMap.objects.length} 個物件 · Approach {selectedMap.approachMs} ms · Hit Window ±{selectedMap.hitWindowMs} ms
-                  {' · '}
-                  {selectedMap.validation.repaired > 0
-                    ? `Validator repaired ${selectedMap.validation.repaired}`
-                    : 'Validator PASS'}
-                  {selectedBest
-                    ? ` · Best ${selectedBest.score.toLocaleString()} · ${selectedBest.accuracy.toFixed(2)}%`
-                    : ''}
+                  {t('app.mapObjects', { count: number(selectedModeMap?.objects.length ?? selectedMap.objects.length) })}
+                  {' · '}{t('app.approach', { ms: selectedMap.approachMs })}
+                  {' · '}{t('app.hitWindow', { ms: selectedMap.hitWindowMs })}
+                  {' · '}{selectedMap.validation.repaired > 0 ? t('app.validatorRepaired', { count: selectedMap.validation.repaired }) : t('app.validatorPass')}
+                  {selectedBest ? ` · ${t('app.best', { score: number(selectedBest.score), accuracy: selectedBest.accuracy.toFixed(2) })}` : ''}
                 </p>
               </div>
-              <button className="primary-button play-button" type="button" onClick={() => setStage('game')}>
-                <Play size={21} fill="currentColor" />PLAY
-              </button>
+              <button className="primary-button play-button" type="button" onClick={() => setStage('game')}><Play size={21} fill="currentColor" />{t('app.playButton')}</button>
             </div>
           </section>
         </main>
       )}
 
-      <footer className="footer">
-        <span>BeatForge v0.5.0 · Turn Music Into Play</span>
-        <span>Local-first audio processing</span>
-      </footer>
+      <footer className="footer"><span>BeatForge v0.5.0 · Turn Music Into Play</span><span>{t('app.footerPrivacy')}</span></footer>
 
       {settingsOpen && (
         <div className="drawer-backdrop" onMouseDown={() => setSettingsOpen(false)}>
-          <aside className="settings-drawer" onMouseDown={(event) => event.stopPropagation()} aria-label="遊戲設定">
+          <aside className="settings-drawer" onMouseDown={(event) => event.stopPropagation()} aria-label={t('app.settings')}>
             <div className="drawer-heading">
-              <div><span className="eyebrow">SETTINGS</span><h2>遊戲設定</h2></div>
-              <button className="icon-button" type="button" onClick={() => setSettingsOpen(false)} aria-label="關閉設定"><X size={20} /></button>
+              <div><span className="eyebrow">SETTINGS</span><h2>{t('app.settings')}</h2></div>
+              <button className="icon-button" type="button" onClick={() => setSettingsOpen(false)} aria-label={t('app.closeSettings')}><X size={20} /></button>
             </div>
 
+            <label className="language-setting">
+              <div><strong><Languages size={17} />{t('language.label')}</strong></div>
+              <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+                {SUPPORTED_LOCALES.map((item) => <option key={item} value={item}>{t(localeLabelKey(item))}</option>)}
+              </select>
+            </label>
+
             <label className="range-setting">
-              <div><strong>音訊音量</strong><span>{Math.round(volume * 100)}%</span></div>
+              <div><strong>{t('app.songVolume')}</strong><span>{Math.round(volume * 100)}%</span></div>
               <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(event) => setVolume(Number(event.target.value))} />
             </label>
 
             <label className="range-setting">
-              <div><strong>Hit Sound</strong><span>{Math.round(hitSoundVolume * 100)}%</span></div>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={hitSoundVolume}
-                onChange={(event) => setHitSoundVolume(Number(event.target.value))}
-              />
-              <small>調整按中音符時的打擊音效音量，不會改變歌曲本身音量。</small>
+              <div><strong>{t('app.hitSound')}</strong><span>{Math.round(hitSoundVolume * 100)}%</span></div>
+              <input type="range" min="0" max="1" step="0.01" value={hitSoundVolume} onChange={(event) => setHitSoundVolume(Number(event.target.value))} />
+              <small>{t('app.hitSoundHelp')}</small>
             </label>
 
             <label className="range-setting">
-              <div><strong>Timing Offset</strong><span>{offsetMs > 0 ? '+' : ''}{offsetMs} ms</span></div>
+              <div><strong>{t('app.timingOffset')}</strong><span>{offsetMs > 0 ? '+' : ''}{offsetMs} ms</span></div>
               <input type="range" min="-200" max="200" step="1" value={offsetMs} onChange={(event) => setOffsetMs(Number(event.target.value))} />
-              <small>如果你覺得音符總是偏早或偏遲，可調整全域判定偏移。藍牙耳機通常需要較大的補償。</small>
+              <small>{t('app.timingHelp')}</small>
             </label>
 
-            <button className="secondary-button full" type="button" onClick={() => void estimateDeviceLatency()}>
-              <AudioLines size={17} />估算裝置音訊延遲
-            </button>
-            {latencyInfo && <p className="latency-info">{latencyInfo}</p>}
+            <button className="secondary-button full" type="button" onClick={() => void estimateDeviceLatency()}><AudioLines size={17} />{t('app.estimateLatency')}</button>
+            {latencyInfo && <p className="latency-info">{t(latencyInfo.key, latencyInfo.variables)}</p>}
 
-            <button className="secondary-button full" type="button" onClick={() => { setOffsetMs(0); setVolume(0.82); setHitSoundVolume(0.55); setLatencyInfo(''); }}>
-              重設為預設值
-            </button>
+            <button className="secondary-button full" type="button" onClick={() => { setOffsetMs(0); setVolume(0.82); setHitSoundVolume(0.55); setLatencyInfo(null); }}>{t('app.resetSettings')}</button>
 
-            <div className="settings-note">
-              <ShieldCheck size={19} />
-              <p><strong>Local-first</strong>歌曲檔案不會傳到 BeatForge 伺服器；重新整理頁面後音訊即離開記憶體。</p>
-            </div>
+            <div className="settings-note"><ShieldCheck size={19} /><p><strong>{t('app.localFirstTitle')}</strong>{t('app.localFirstDescription')}</p></div>
           </aside>
         </div>
       )}
