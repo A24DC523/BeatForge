@@ -1,5 +1,6 @@
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n, type MessageKey } from '../i18n';
 import type { Beatmap, HitObject, Judge, ScoreState } from '../types';
 import { HitSoundEngine, type HitSoundKind } from './hitSound';
 
@@ -131,6 +132,15 @@ function resultRank(accuracy: number, misses: number) {
   return 'D';
 }
 
+function popupLabelKey(label: string): MessageKey {
+  if (label === 'PERFECT') return 'common.perfect';
+  if (label === 'GREAT') return 'common.great';
+  if (label === 'GOOD') return 'common.good';
+  if (label === 'MISS') return 'common.miss';
+  if (label === 'SLIDE') return 'common.slide';
+  return 'common.hold';
+}
+
 export function GameCanvas({
   beatmap,
   audioUrl,
@@ -140,6 +150,8 @@ export function GameCanvas({
   onExit,
   onFinish,
 }: Props) {
+  const { t, number } = useI18n();
+  const difficultyLabel = t(`difficulty.${beatmap.difficulty}.label` as MessageKey);
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -528,15 +540,11 @@ export function GameCanvas({
         if (object.type !== 'tap') {
           ctx.font = `700 ${Math.round(baseRadius * 0.3)}px ui-sans-serif, system-ui`;
           ctx.fillStyle = typeColor;
-          ctx.fillText(object.type === 'hold' ? 'HOLD' : 'SLIDE', x, y + baseRadius * 1.42);
+          ctx.fillText(object.type === 'hold' ? t('common.hold') : t('common.slide'), x, y + baseRadius * 1.42);
 
           ctx.font = `700 ${Math.round(baseRadius * 0.25)}px ui-sans-serif, system-ui`;
           ctx.fillStyle = 'rgba(255,255,255,.68)';
-          ctx.fillText(
-            `${((object.duration ?? 0) / 1000).toFixed(1)}s`,
-            x,
-            y + baseRadius * 1.78,
-          );
+          ctx.fillText(`${((object.duration ?? 0) / 1000).toFixed(1)}s`, x, y + baseRadius * 1.78);
         }
       } else {
         const target = currentTargetFor(object, nowMs);
@@ -598,20 +606,19 @@ export function GameCanvas({
         ctx.font = `900 ${Math.round(baseRadius * 0.34)}px ui-sans-serif, system-ui`;
         ctx.fillText(
           engaged.broken
-            ? 'BROKEN'
+            ? t('common.broken')
             : temporarilyReleased
-              ? 'HOLD!'
+              ? t('common.hold')
               : trackingLost
-                ? 'TRACK!'
+                ? t('common.track')
                 : nearRelease
-                  ? 'RELEASE'
+                  ? t('common.release')
                   : `${(remainingMs / 1000).toFixed(1)}s`,
           tx,
           ty + baseRadius * 1.72,
         );
       }
     }
-
 
     for (const burst of hitBurstsRef.current) {
       const age = effectNow - burst.at;
@@ -680,13 +687,13 @@ export function GameCanvas({
 
     for (const popup of judgePopupsRef.current) {
       const age = effectNow - popup.at;
-      const progress = Math.max(0, Math.min(1, age / 680));
-      const fade = Math.max(0, 1 - Math.pow(progress, 1.65));
-      const pop = progress < 0.18
-        ? 0.76 + (progress / 0.18) * 0.34
-        : 1.1 - ((progress - 0.18) / 0.82) * 0.1;
+      const popupProgress = Math.max(0, Math.min(1, age / 680));
+      const fade = Math.max(0, 1 - Math.pow(popupProgress, 1.65));
+      const pop = popupProgress < 0.18
+        ? 0.76 + (popupProgress / 0.18) * 0.34
+        : 1.1 - ((popupProgress - 0.18) / 0.82) * 0.1;
       const x = Math.max(72, Math.min(w - 72, popup.x * w));
-      const y = Math.max(58, Math.min(h - 48, popup.y * h - 44 - progress * 26));
+      const y = Math.max(58, Math.min(h - 48, popup.y * h - 44 - popupProgress * 26));
       const color =
         popup.label === 'PERFECT' ? '#8ff3dc' :
         popup.label === 'GREAT' ? '#88dcff' :
@@ -706,13 +713,13 @@ export function GameCanvas({
 
       ctx.fillStyle = color;
       ctx.font = `900 ${Math.max(14, Math.min(22, unit * 0.031))}px ui-sans-serif, system-ui`;
-      ctx.fillText(popup.label, 0, 0);
+      ctx.fillText(t(popupLabelKey(popup.label)), 0, 0);
 
       if (popup.points !== null) {
         ctx.shadowBlur = 8;
         ctx.fillStyle = popup.points > 0 ? '#ffffff' : 'rgba(255,255,255,.72)';
         ctx.font = `800 ${Math.max(11, Math.min(16, unit * 0.022))}px ui-sans-serif, system-ui`;
-        ctx.fillText(`+${popup.points.toLocaleString()}`, 0, 21);
+        ctx.fillText(`+${number(popup.points)}`, 0, 21);
       }
 
       ctx.restore();
@@ -736,7 +743,7 @@ export function GameCanvas({
     }
 
     ctx.restore();
-  }, [beatmap, currentTargetFor, isTouch]);
+  }, [beatmap, currentTargetFor, isTouch, number, t]);
 
   const frame = useCallback(() => {
     const audio = audioRef.current;
@@ -751,7 +758,6 @@ export function GameCanvas({
     }
 
     draw(nowMs);
-
     rafRef.current = requestAnimationFrame(frame);
   }, [draw, durationMs, finalizeSustains, markMisses, offsetMs, status, validateSustains]);
 
@@ -943,21 +949,21 @@ export function GameCanvas({
   }, [beatmap.duration, progress]);
 
   return (
-    <div className="game-shell" ref={rootRef} tabIndex={0} aria-label="BeatForge 遊戲區">
+    <div className="game-shell" ref={rootRef} tabIndex={0} aria-label={t('common.gameArea')}>
       <audio ref={audioRef} src={audioUrl} preload="auto" onEnded={finish} />
 
       <div className="game-hud game-hud-left">
-        <button className="icon-button" type="button" onClick={onExit} aria-label="離開遊戲"><X size={20} /></button>
+        <button className="icon-button" type="button" onClick={onExit} aria-label={t('common.exitGame')}><X size={20} /></button>
         <div>
           <strong>{beatmap.title}</strong>
-          <span>{beatmap.difficultyLabel} · ★ {beatmap.starRating.toFixed(1)}</span>
+          <span>{difficultyLabel} · ★ {beatmap.starRating.toFixed(1)}</span>
         </div>
       </div>
 
       <div className="game-hud game-hud-right">
-        <div className="hud-score"><strong>{score.score.toLocaleString()}</strong><span>{accuracyText}%</span></div>
+        <div className="hud-score"><strong>{number(score.score)}</strong><span>{accuracyText}%</span></div>
         <div key={comboPulseKey} className={`hud-combo combo-tier-${comboTier}`}>{score.combo}<span>x</span></div>
-        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'} aria-label="暫停或繼續">
+        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'} aria-label={t('common.pauseResume')}>
           {status === 'paused' ? <Play size={20} /> : <Pause size={20} />}
         </button>
       </div>
@@ -978,18 +984,18 @@ export function GameCanvas({
       )}
       {comboMilestone !== null && (
         <div key={`milestone-${comboMilestone}`} className={`combo-milestone combo-tier-${comboTier}`}>
-          <span>{comboMilestone >= 100 ? 'FEVER' : comboMilestone >= 50 ? 'ON FIRE' : 'COMBO'}</span>
+          <span>{comboMilestone >= 100 ? t('game.fever') : comboMilestone >= 50 ? t('game.onFire') : t('game.combo')}</span>
           <strong>{comboMilestone}</strong>
-          <em>COMBO</em>
+          <em>{t('game.combo')}</em>
         </div>
       )}
       {status === 'ready' && (
         <div className="game-overlay">
           <div className="game-modal">
-            <span className="eyebrow">READY</span>
-            <h2>{beatmap.difficultyLabel}</h2>
-            <p>{isTouch ? '直接點擊音符；長按 Hold，沿路徑拖曳 Slide。' : '移動滑鼠定位音符，按 Z / X 擊打；Slide 時按住並跟隨路徑。'}</p>
-            <button className="primary-button large" type="button" onClick={start}><Play size={20} />開始遊戲</button>
+            <span className="eyebrow">{t('common.ready')}</span>
+            <h2>{difficultyLabel}</h2>
+            <p>{isTouch ? t('game.forgeTouchHelp') : t('game.forgeDesktopHelp')}</p>
+            <button className="primary-button large" type="button" onClick={start}><Play size={20} />{t('common.start')}</button>
           </div>
         </div>
       )}
@@ -998,8 +1004,8 @@ export function GameCanvas({
         <div className="game-overlay">
           <div className="game-modal">
             <span className="eyebrow">PAUSED</span>
-            <h2>已暫停</h2>
-            <button className="primary-button large" type="button" onClick={togglePause}><Play size={20} />繼續</button>
+            <h2>{t('common.paused')}</h2>
+            <button className="primary-button large" type="button" onClick={togglePause}><Play size={20} />{t('common.continue')}</button>
           </div>
         </div>
       )}
@@ -1009,21 +1015,21 @@ export function GameCanvas({
           <div className="result-modal">
             <div className="result-rank">{resultRank(score.accuracy, score.miss)}</div>
             <div className="result-copy">
-              <span className="eyebrow">RESULT</span>
-              <h2>{score.score.toLocaleString()}</h2>
-              <p>{beatmap.title} · {beatmap.difficultyLabel}</p>
+              <span className="eyebrow">{t('common.result')}</span>
+              <h2>{number(score.score)}</h2>
+              <p>{beatmap.title} · {difficultyLabel}</p>
             </div>
             <div className="result-grid">
-              <div><span>Accuracy</span><strong>{accuracyText}%</strong></div>
-              <div><span>Max Combo</span><strong>{score.maxCombo}x</strong></div>
-              <div><span>Perfect</span><strong>{score.perfect}</strong></div>
-              <div><span>Great</span><strong>{score.great}</strong></div>
-              <div><span>Good</span><strong>{score.good}</strong></div>
-              <div><span>Miss</span><strong>{score.miss}</strong></div>
+              <div><span>{t('common.accuracy')}</span><strong>{accuracyText}%</strong></div>
+              <div><span>{t('common.maxCombo')}</span><strong>{score.maxCombo}x</strong></div>
+              <div><span>{t('common.perfect')}</span><strong>{score.perfect}</strong></div>
+              <div><span>{t('common.great')}</span><strong>{score.great}</strong></div>
+              <div><span>{t('common.good')}</span><strong>{score.good}</strong></div>
+              <div><span>{t('common.miss')}</span><strong>{score.miss}</strong></div>
             </div>
             <div className="result-actions">
-              <button className="secondary-button" type="button" onClick={onExit}><X size={18} />返回選曲</button>
-              <button className="primary-button" type="button" onClick={start}><RotateCcw size={18} />再玩一次</button>
+              <button className="secondary-button" type="button" onClick={onExit}><X size={18} />{t('common.returnSelection')}</button>
+              <button className="primary-button" type="button" onClick={start}><RotateCcw size={18} />{t('common.retry')}</button>
             </div>
           </div>
         </div>
