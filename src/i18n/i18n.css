@@ -1,0 +1,110 @@
+.language-control,
+.language-setting {
+  color: inherit;
+}
+
+.language-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.language-control select,
+.language-setting select {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+}
+
+.language-control select {
+  max-width: 150px;
+  border: 0;
+  background: transparent;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.language-control option,
+.language-setting option {
+  background: #111521;
+  color: #f6f7fb;
+}
+
+.language-control:focus-within,
+.language-setting select:focus-visible {
+  border-color: rgba(139, 124, 255, 0.78);
+  box-shadow: 0 0 0 3px rgba(139, 124, 255, 0.16);
+}
+
+.language-setting {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.language-setting strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.language-setting select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  background: #111521;
+  font-weight: 700;
+}
+
+html[lang^='ja'] .hero-copy h1,
+html[lang^='en'] .hero-copy h1 {
+  letter-spacing: -0.035em;
+}
+
+html[lang^='zh'] .hero-copy h1,
+html[lang^='ja'] .hero-copy h1 {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.mode-card p,
+.diff-copy small,
+.game-modal p,
+.settings-note p {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .language-control.compact {
+    min-width: 0;
+    padding: 0 8px;
+    gap: 5px;
+  }
+
+  .language-control.compact svg {
+    display: none;
+  }
+
+  .language-control.compact select {
+    max-width: 104px;
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .language-control.compact select {
+    max-width: 82px;
+  }
+}
