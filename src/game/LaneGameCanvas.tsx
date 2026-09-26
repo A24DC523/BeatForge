@@ -1,5 +1,6 @@
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n, type MessageKey } from '../i18n';
 import type { Beatmap, GameModeId, HitObject, Judge, ScoreState } from '../types';
 import { HitSoundEngine } from './hitSound';
 import { gameModeById } from './modes';
@@ -76,6 +77,13 @@ function rankFor(accuracy: number, misses: number) {
   return 'D';
 }
 
+function judgeKey(label: string): MessageKey {
+  if (label === 'PERFECT') return 'common.perfect';
+  if (label === 'GREAT') return 'common.great';
+  if (label === 'GOOD') return 'common.good';
+  return 'common.miss';
+}
+
 function laneFor(object: HitObject, lanes: number) {
   if (lanes <= 1) return 0;
   if (Number.isInteger(object.lane)) {
@@ -101,7 +109,11 @@ export function LaneGameCanvas({
   onExit,
   onFinish,
 }: Props) {
+  const { t, number } = useI18n();
   const definition = gameModeById(mode);
+  const difficultyLabel = t(`difficulty.${beatmap.difficulty}.label` as MessageKey);
+  const desktopControl = t(definition.controlsDesktopKey);
+  const mobileControl = t(definition.controlsMobileKey);
   const lanes = definition.lanes ?? 1;
   const keys = useMemo(() => keyMapFor(lanes), [lanes]);
 
@@ -350,10 +362,7 @@ export function LaneGameCanvas({
 
       if (isHold) {
         const endTime = object.time + (object.duration ?? 0);
-        const endTravel = 1 - Math.max(
-          0,
-          Math.min(1, (endTime - nowMs) / beatmap.approachMs),
-        );
+        const endTravel = 1 - Math.max(0, Math.min(1, (endTime - nowMs) / beatmap.approachMs));
         const endY = topY + (hitY - topY) * endTravel;
         const bodyStartY = active ? hitY : y;
         const bodyEndY = Math.min(hitY, endY);
@@ -402,7 +411,7 @@ export function LaneGameCanvas({
           ctx.fillStyle = active.broken ? '#ff8e89' : nearRelease ? '#ffffff' : 'rgba(255,255,255,.84)';
           ctx.font = `800 ${Math.max(10, Math.min(13, laneWidth * 0.07))}px ui-sans-serif, system-ui`;
           ctx.fillText(
-            active.broken ? 'BROKEN' : nearRelease ? 'RELEASE' : `${(remaining / 1000).toFixed(1)}s`,
+            active.broken ? t('common.broken') : nearRelease ? t('common.release') : `${(remaining / 1000).toFixed(1)}s`,
             centerX,
             hitY - 44,
           );
@@ -445,13 +454,13 @@ export function LaneGameCanvas({
       ctx.fillStyle = color;
       ctx.font = `900 ${Math.max(14, Math.min(22, laneWidth * 0.12))}px ui-sans-serif, system-ui`;
       ctx.textAlign = 'center';
-      ctx.fillText(popup.label, centerX, y);
+      ctx.fillText(t(judgeKey(popup.label)), centerX, y);
       ctx.fillStyle = 'rgba(255,255,255,.92)';
       ctx.font = `800 ${Math.max(11, Math.min(16, laneWidth * 0.085))}px ui-sans-serif, system-ui`;
-      ctx.fillText(`+${popup.points.toLocaleString()}`, centerX, y + 20);
+      ctx.fillText(`+${number(popup.points)}`, centerX, y + 20);
       ctx.globalAlpha = 1;
     }
-  }, [beatmap.approachMs, beatmap.hitWindowMs, beatmap.objects, keys, lanePressed, lanes]);
+  }, [beatmap.approachMs, beatmap.hitWindowMs, beatmap.objects, keys, lanePressed, lanes, number, t]);
 
   const frame = useCallback(() => {
     const audio = audioRef.current;
@@ -626,17 +635,17 @@ export function LaneGameCanvas({
       <audio ref={audioRef} src={audioUrl} preload="auto" onEnded={finish} />
 
       <div className="game-hud game-hud-left">
-        <button className="icon-button" type="button" onClick={onExit} aria-label="離開遊戲"><X size={20} /></button>
+        <button className="icon-button" type="button" onClick={onExit} aria-label={t('common.exitGame')}><X size={20} /></button>
         <div>
           <strong>{beatmap.title}</strong>
-          <span>{definition.label} · {beatmap.difficultyLabel}</span>
+          <span>{definition.label} · {difficultyLabel}</span>
         </div>
       </div>
 
       <div className="game-hud game-hud-right">
-        <div className="hud-score"><strong>{score.score.toLocaleString()}</strong><span>{accuracyText}%</span></div>
+        <div className="hud-score"><strong>{number(score.score)}</strong><span>{accuracyText}%</span></div>
         <div key={comboPulseKey} className="hud-combo">{score.combo}<span>x</span></div>
-        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'} aria-label="暫停或繼續">
+        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'} aria-label={t('common.pauseResume')}>
           {status === 'paused' ? <Play size={20} /> : <Pause size={20} />}
         </button>
       </div>
@@ -657,12 +666,9 @@ export function LaneGameCanvas({
         <div className="game-overlay">
           <div className="game-modal">
             <span className="eyebrow">{definition.label}</span>
-            <h2>{beatmap.difficultyLabel}</h2>
-            <p>
-              電腦：{definition.controlsDesktop}<br />
-              手機：{definition.controlsMobile}
-            </p>
-            <button className="primary-button large" type="button" onClick={start}><Play size={20} />開始遊戲</button>
+            <h2>{difficultyLabel}</h2>
+            <p>{t('game.laneControls', { desktop: desktopControl, mobile: mobileControl }).split('\n').map((line, index) => <span key={line}>{index > 0 && <br />}{line}</span>)}</p>
+            <button className="primary-button large" type="button" onClick={start}><Play size={20} />{t('common.start')}</button>
           </div>
         </div>
       )}
@@ -671,8 +677,8 @@ export function LaneGameCanvas({
         <div className="game-overlay">
           <div className="game-modal">
             <span className="eyebrow">PAUSED</span>
-            <h2>已暫停</h2>
-            <button className="primary-button large" type="button" onClick={togglePause}><Play size={20} />繼續</button>
+            <h2>{t('common.paused')}</h2>
+            <button className="primary-button large" type="button" onClick={togglePause}><Play size={20} />{t('common.continue')}</button>
           </div>
         </div>
       )}
@@ -683,20 +689,20 @@ export function LaneGameCanvas({
             <div className="result-rank">{rankFor(score.accuracy, score.miss)}</div>
             <div className="result-copy">
               <span className="eyebrow">{definition.label}</span>
-              <h2>{score.score.toLocaleString()}</h2>
-              <p>{beatmap.title} · {beatmap.difficultyLabel}</p>
+              <h2>{number(score.score)}</h2>
+              <p>{beatmap.title} · {difficultyLabel}</p>
             </div>
             <div className="result-grid">
-              <div><span>Accuracy</span><strong>{accuracyText}%</strong></div>
-              <div><span>Max Combo</span><strong>{score.maxCombo}x</strong></div>
-              <div><span>Perfect</span><strong>{score.perfect}</strong></div>
-              <div><span>Great</span><strong>{score.great}</strong></div>
-              <div><span>Good</span><strong>{score.good}</strong></div>
-              <div><span>Miss</span><strong>{score.miss}</strong></div>
+              <div><span>{t('common.accuracy')}</span><strong>{accuracyText}%</strong></div>
+              <div><span>{t('common.maxCombo')}</span><strong>{score.maxCombo}x</strong></div>
+              <div><span>{t('common.perfect')}</span><strong>{score.perfect}</strong></div>
+              <div><span>{t('common.great')}</span><strong>{score.great}</strong></div>
+              <div><span>{t('common.good')}</span><strong>{score.good}</strong></div>
+              <div><span>{t('common.miss')}</span><strong>{score.miss}</strong></div>
             </div>
             <div className="result-actions">
-              <button className="secondary-button" type="button" onClick={onExit}><X size={18} />返回選曲</button>
-              <button className="primary-button" type="button" onClick={start}><RotateCcw size={18} />再玩一次</button>
+              <button className="secondary-button" type="button" onClick={onExit}><X size={18} />{t('common.returnSelection')}</button>
+              <button className="primary-button" type="button" onClick={start}><RotateCcw size={18} />{t('common.retry')}</button>
             </div>
           </div>
         </div>
