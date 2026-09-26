@@ -1,5 +1,6 @@
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useI18n, type MessageKey } from '../i18n';
 import type { Beatmap, HitObject, Judge, ScoreState } from '../types';
 import { HitSoundEngine } from './hitSound';
 
@@ -36,13 +37,6 @@ function judgeFor(delta: number, windowMs: number): Exclude<Judge, 'miss'> | nul
   return null;
 }
 
-function weight(judge: Judge) {
-  if (judge === 'perfect') return 1;
-  if (judge === 'great') return 0.7;
-  if (judge === 'good') return 0.3;
-  return 0;
-}
-
 function baseScore(judge: Judge) {
   if (judge === 'perfect') return 1000;
   if (judge === 'great') return 650;
@@ -66,9 +60,18 @@ function rankFor(accuracy: number, misses: number) {
   return 'D';
 }
 
+function judgeKey(label: string): MessageKey {
+  if (label === 'PERFECT') return 'common.perfect';
+  if (label === 'GREAT') return 'common.great';
+  if (label === 'GOOD') return 'common.good';
+  return 'common.miss';
+}
+
 export function DrumGameCanvas({
   beatmap, audioUrl, offsetMs, volume, hitSoundVolume, onExit, onFinish,
 }: Props) {
+  const { t, number } = useI18n();
+  const difficultyLabel = t(`difficulty.${beatmap.difficulty}.label` as MessageKey);
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -234,10 +237,10 @@ export function DrumGameCanvas({
       ctx.textAlign = 'center';
       ctx.fillStyle = popup.kind === 'don' ? '#ff8797' : '#83d2ff';
       ctx.font = '900 22px ui-sans-serif, system-ui';
-      ctx.fillText(popup.label, hitX, trackY - 72 - p * 24);
+      ctx.fillText(t(judgeKey(popup.label)), hitX, trackY - 72 - p * 24);
       ctx.fillStyle = '#fff';
       ctx.font = '800 14px ui-sans-serif, system-ui';
-      ctx.fillText(`+${popup.points.toLocaleString()}`, hitX, trackY - 49 - p * 24);
+      ctx.fillText(`+${number(popup.points)}`, hitX, trackY - 49 - p * 24);
       ctx.globalAlpha = 1;
     }
 
@@ -246,7 +249,7 @@ export function DrumGameCanvas({
     ctx.textAlign = 'center';
     ctx.fillText('DON  F / J', w * 0.39, h * 0.79);
     ctx.fillText('KA  D / K', w * 0.64, h * 0.79);
-  }, [beatmap.approachMs, beatmap.hitWindowMs, beatmap.objects]);
+  }, [beatmap.approachMs, beatmap.hitWindowMs, beatmap.objects, number, t]);
 
   const frame = useCallback(() => {
     const audio = audioRef.current;
@@ -332,17 +335,17 @@ export function DrumGameCanvas({
   }, [applyJudge, beatmap.objects]);
 
   return (
-    <div className="game-shell" ref={rootRef} tabIndex={0}>
+    <div className="game-shell" ref={rootRef} tabIndex={0} aria-label={t('common.gameArea')}>
       <audio ref={audioRef} src={audioUrl} preload="auto" onEnded={finish} />
 
       <div className="game-hud game-hud-left">
-        <button className="icon-button" type="button" onClick={onExit}><X size={20} /></button>
-        <div><strong>{beatmap.title}</strong><span>DRUM · {beatmap.difficultyLabel}</span></div>
+        <button className="icon-button" type="button" onClick={onExit} aria-label={t('common.exitGame')}><X size={20} /></button>
+        <div><strong>{beatmap.title}</strong><span>DRUM · {difficultyLabel}</span></div>
       </div>
       <div className="game-hud game-hud-right">
-        <div className="hud-score"><strong>{score.score.toLocaleString()}</strong><span>{score.accuracy.toFixed(2)}%</span></div>
+        <div className="hud-score"><strong>{number(score.score)}</strong><span>{score.accuracy.toFixed(2)}%</span></div>
         <div key={comboKey} className="hud-combo">{score.combo}<span>x</span></div>
-        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'}>
+        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'} aria-label={t('common.pauseResume')}>
           {status === 'paused' ? <Play size={20} /> : <Pause size={20} />}
         </button>
       </div>
@@ -361,34 +364,34 @@ export function DrumGameCanvas({
 
       {status === 'ready' && (
         <div className="game-overlay"><div className="game-modal">
-          <span className="eyebrow">DRUM</span><h2>{beatmap.difficultyLabel}</h2>
-          <p>DON：F / J · KA：D / K。手機點擊左半邊 Don、右半邊 Ka。</p>
-          <button className="primary-button large" onClick={start}><Play size={20} />開始遊戲</button>
+          <span className="eyebrow">DRUM</span><h2>{difficultyLabel}</h2>
+          <p>{t('game.drumHelp')}</p>
+          <button className="primary-button large" onClick={start}><Play size={20} />{t('common.start')}</button>
         </div></div>
       )}
 
       {status === 'paused' && (
         <div className="game-overlay"><div className="game-modal">
-          <span className="eyebrow">PAUSED</span><h2>已暫停</h2>
-          <button className="primary-button large" onClick={togglePause}><Play size={20} />繼續</button>
+          <span className="eyebrow">PAUSED</span><h2>{t('common.paused')}</h2>
+          <button className="primary-button large" onClick={togglePause}><Play size={20} />{t('common.continue')}</button>
         </div></div>
       )}
 
       {status === 'finished' && (
         <div className="game-overlay"><div className="result-modal">
           <div className="result-rank">{rankFor(score.accuracy, score.miss)}</div>
-          <div className="result-copy"><span className="eyebrow">DRUM RESULT</span><h2>{score.score.toLocaleString()}</h2><p>{beatmap.title}</p></div>
+          <div className="result-copy"><span className="eyebrow">{t('game.drumResult')}</span><h2>{number(score.score)}</h2><p>{beatmap.title}</p></div>
           <div className="result-grid">
-            <div><span>Accuracy</span><strong>{score.accuracy.toFixed(2)}%</strong></div>
-            <div><span>Max Combo</span><strong>{score.maxCombo}x</strong></div>
-            <div><span>Perfect</span><strong>{score.perfect}</strong></div>
-            <div><span>Great</span><strong>{score.great}</strong></div>
-            <div><span>Good</span><strong>{score.good}</strong></div>
-            <div><span>Miss</span><strong>{score.miss}</strong></div>
+            <div><span>{t('common.accuracy')}</span><strong>{score.accuracy.toFixed(2)}%</strong></div>
+            <div><span>{t('common.maxCombo')}</span><strong>{score.maxCombo}x</strong></div>
+            <div><span>{t('common.perfect')}</span><strong>{score.perfect}</strong></div>
+            <div><span>{t('common.great')}</span><strong>{score.great}</strong></div>
+            <div><span>{t('common.good')}</span><strong>{score.good}</strong></div>
+            <div><span>{t('common.miss')}</span><strong>{score.miss}</strong></div>
           </div>
           <div className="result-actions">
-            <button className="secondary-button" onClick={onExit}><X size={18} />返回選曲</button>
-            <button className="primary-button" onClick={start}><RotateCcw size={18} />再玩一次</button>
+            <button className="secondary-button" onClick={onExit}><X size={18} />{t('common.returnSelection')}</button>
+            <button className="primary-button" onClick={start}><RotateCcw size={18} />{t('common.retry')}</button>
           </div>
         </div></div>
       )}
