@@ -1,5 +1,6 @@
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useI18n, type MessageKey } from '../i18n';
 import type { Beatmap, HitObject, Judge, ScoreState } from '../types';
 import { HitSoundEngine } from './hitSound';
 
@@ -50,9 +51,18 @@ function rankFor(accuracy: number, misses: number) {
   return 'D';
 }
 
+function judgeKey(label: string): MessageKey {
+  if (label === 'PERFECT') return 'common.perfect';
+  if (label === 'GREAT') return 'common.great';
+  if (label === 'GOOD') return 'common.good';
+  return 'common.miss';
+}
+
 export function CatchGameCanvas({
   beatmap, audioUrl, offsetMs, volume, hitSoundVolume, onExit, onFinish,
 }: Props) {
+  const { t, number } = useI18n();
+  const difficultyLabel = t(`difficulty.${beatmap.difficulty}.label` as MessageKey);
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -223,13 +233,13 @@ export function CatchGameCanvas({
       ctx.textAlign = 'center';
       ctx.fillStyle = color;
       ctx.font = '900 18px ui-sans-serif, system-ui';
-      ctx.fillText(popup.label, x, y);
+      ctx.fillText(t(judgeKey(popup.label)), x, y);
       ctx.fillStyle = '#fff';
       ctx.font = '800 13px ui-sans-serif, system-ui';
-      ctx.fillText(`+${popup.points.toLocaleString()}`, x, y + 18);
+      ctx.fillText(`+${number(popup.points)}`, x, y + 18);
       ctx.globalAlpha = 1;
     }
-  }, [beatmap.approachMs, beatmap.objects]);
+  }, [beatmap.approachMs, beatmap.objects, number, t]);
 
   const frame = useCallback(() => {
     const audio = audioRef.current;
@@ -354,18 +364,18 @@ export function CatchGameCanvas({
   }, [applyJudge, beatmap.objects]);
 
   return (
-    <div className="game-shell" ref={rootRef} tabIndex={0}>
+    <div className="game-shell" ref={rootRef} tabIndex={0} aria-label={t('common.gameArea')}>
       <audio ref={audioRef} src={audioUrl} preload="auto" onEnded={finish} />
 
       <div className="game-hud game-hud-left">
-        <button className="icon-button" type="button" onClick={onExit}><X size={20} /></button>
-        <div><strong>{beatmap.title}</strong><span>CATCH · {beatmap.difficultyLabel}</span></div>
+        <button className="icon-button" type="button" onClick={onExit} aria-label={t('common.exitGame')}><X size={20} /></button>
+        <div><strong>{beatmap.title}</strong><span>CATCH · {difficultyLabel}</span></div>
       </div>
 
       <div className="game-hud game-hud-right">
-        <div className="hud-score"><strong>{score.score.toLocaleString()}</strong><span>{score.accuracy.toFixed(2)}%</span></div>
+        <div className="hud-score"><strong>{number(score.score)}</strong><span>{score.accuracy.toFixed(2)}%</span></div>
         <div key={comboKey} className="hud-combo">{score.combo}<span>x</span></div>
-        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'}>
+        <button className="icon-button" type="button" onClick={togglePause} disabled={status === 'ready' || status === 'finished'} aria-label={t('common.pauseResume')}>
           {status === 'paused' ? <Play size={20} /> : <Pause size={20} />}
         </button>
       </div>
@@ -390,34 +400,34 @@ export function CatchGameCanvas({
 
       {status === 'ready' && (
         <div className="game-overlay"><div className="game-modal">
-          <span className="eyebrow">CATCH</span><h2>{beatmap.difficultyLabel}</h2>
-          <p>使用 ← / → 或 A / D 移動接手；手機直接左右拖曳。音符到達判定線時，位置越準分數越高。</p>
-          <button className="primary-button large" onClick={start}><Play size={20} />開始遊戲</button>
+          <span className="eyebrow">CATCH</span><h2>{difficultyLabel}</h2>
+          <p>{t('game.catchHelp')}</p>
+          <button className="primary-button large" onClick={start}><Play size={20} />{t('common.start')}</button>
         </div></div>
       )}
 
       {status === 'paused' && (
         <div className="game-overlay"><div className="game-modal">
-          <span className="eyebrow">PAUSED</span><h2>已暫停</h2>
-          <button className="primary-button large" onClick={togglePause}><Play size={20} />繼續</button>
+          <span className="eyebrow">PAUSED</span><h2>{t('common.paused')}</h2>
+          <button className="primary-button large" onClick={togglePause}><Play size={20} />{t('common.continue')}</button>
         </div></div>
       )}
 
       {status === 'finished' && (
         <div className="game-overlay"><div className="result-modal">
           <div className="result-rank">{rankFor(score.accuracy, score.miss)}</div>
-          <div className="result-copy"><span className="eyebrow">CATCH RESULT</span><h2>{score.score.toLocaleString()}</h2><p>{beatmap.title}</p></div>
+          <div className="result-copy"><span className="eyebrow">{t('game.catchResult')}</span><h2>{number(score.score)}</h2><p>{beatmap.title}</p></div>
           <div className="result-grid">
-            <div><span>Accuracy</span><strong>{score.accuracy.toFixed(2)}%</strong></div>
-            <div><span>Max Combo</span><strong>{score.maxCombo}x</strong></div>
-            <div><span>Perfect</span><strong>{score.perfect}</strong></div>
-            <div><span>Great</span><strong>{score.great}</strong></div>
-            <div><span>Good</span><strong>{score.good}</strong></div>
-            <div><span>Miss</span><strong>{score.miss}</strong></div>
+            <div><span>{t('common.accuracy')}</span><strong>{score.accuracy.toFixed(2)}%</strong></div>
+            <div><span>{t('common.maxCombo')}</span><strong>{score.maxCombo}x</strong></div>
+            <div><span>{t('common.perfect')}</span><strong>{score.perfect}</strong></div>
+            <div><span>{t('common.great')}</span><strong>{score.great}</strong></div>
+            <div><span>{t('common.good')}</span><strong>{score.good}</strong></div>
+            <div><span>{t('common.miss')}</span><strong>{score.miss}</strong></div>
           </div>
           <div className="result-actions">
-            <button className="secondary-button" onClick={onExit}><X size={18} />返回選曲</button>
-            <button className="primary-button" onClick={start}><RotateCcw size={18} />再玩一次</button>
+            <button className="secondary-button" onClick={onExit}><X size={18} />{t('common.returnSelection')}</button>
+            <button className="primary-button" onClick={start}><RotateCcw size={18} />{t('common.retry')}</button>
           </div>
         </div></div>
       )}
