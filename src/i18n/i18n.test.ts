@@ -18,6 +18,13 @@ describe('BeatForge i18n isolation', () => {
     expect(messages['zh-TW']).not.toBe(messages['zh-CN']);
   });
 
+  it('freezes every locale dictionary against runtime cross-locale mutation', () => {
+    expect(Object.isFrozen(messages)).toBe(true);
+    for (const locale of SUPPORTED_LOCALES) {
+      expect(Object.isFrozen(messages[locale])).toBe(true);
+    }
+  });
+
   it('normalizes browser locale variants deterministically', () => {
     expect(normalizeLocale('zh-HK')).toBe('zh-TW');
     expect(normalizeLocale('zh-Hant')).toBe('zh-TW');
